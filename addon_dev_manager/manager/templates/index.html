@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf }}">
+  <meta name="app-base" content="{{ base }}">
+  <title>Add-on Development Manager</title>
+  <link rel="stylesheet" href="{{ base }}/static/style.css">
+  <script src="{{ base }}/static/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand"><span class="brand-icon" aria-hidden="true">↗</span><div><span class="eyebrow">HOME ASSISTANT</span><h1>Development Manager</h1></div></div>
+      <button id="configure" class="secondary">Repositories & settings</button>
+    </header>
+    <section class="intro">
+      <div><h2>Your code. Ready to run.</h2><p>Deploy GitHub commits to local add-ons, select earlier versions and control them in one place.</p></div>
+      <button id="update-all" class="primary">Update all enabled add-ons</button>
+    </section>
+    <div id="notice" class="notice" hidden role="alert"></div>
+    <section class="operation" aria-label="Current operation">
+      <div class="operation-heading"><span id="job-dot" class="dot"></span><strong id="job-phase">Connecting…</strong><span id="job-status" class="badge">Ready</span></div>
+      <details id="progress"><summary>Operation details</summary><ol id="events"></ol></details>
+    </section>
+    <section><div class="section-heading"><h2>Managed add-ons</h2><span id="count" class="muted"></span></div><div id="cards" class="cards"></div></section>
+    <section class="history"><div class="section-heading"><h2>Deployment history</h2><span class="muted">Times shown in your timezone</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Add-on</th><th>Version / commit</th><th>Time</th><th>Result</th></tr></thead><tbody id="history"></tbody></table></div></section>
+    <footer>Source is versioned with Git. Settings and application data stay with Home Assistant.<br>Definition changes still require a Supervisor repository refresh. Container builds may take a few minutes.</footer>
+  </main>
+  <dialog id="settings-dialog">
+    <form id="settings-form">
+      <div class="section-heading"><h2>Repositories & settings</h2><button type="button" id="close-settings" class="icon-button" aria-label="Close settings">×</button></div>
+      <p class="muted">Each entry selects one add-on directory. Several entries can use the same repository.</p>
+      <label class="check"><input id="startup-toggle" type="checkbox"> Check and deploy on controller startup</label>
+      <p class="hint">Restarting this manager will update entries with their startup option enabled. Unchanged commits are skipped.</p>
+      <div id="repo-rows"></div>
+      <button type="button" id="add-repo" class="secondary">+ Add repository</button>
+      <p class="hint">For private repositories, set GitHub token in this add-on’s Home Assistant Configuration tab. The token is never sent to this page.</p>
+      <div id="settings-error" class="notice" hidden role="alert"></div>
+      <div class="dialog-footer"><button type="button" id="cancel-settings" class="secondary">Cancel</button><button type="submit" class="primary">Save settings</button></div>
+    </form>
+  </dialog>
+  <div id="toast" role="status" hidden></div>
+</body>
+</html>

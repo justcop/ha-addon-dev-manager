@@ -1,0 +1,16 @@
+configuration:
+  update_on_start:
+    name: Update on startup
+    description: Check and deploy enabled startup entries when this controller starts or restarts.
+  github_token:
+    name: GitHub token
+    description: Optional read-only Contents token for private repositories. Never displayed in the web UI.
+  stop_timeout:
+    name: Stop confirmation timeout
+    description: Seconds to wait for a target to confirm it has stopped before replacing source files.
+  health_timeout:
+    name: Startup health timeout
+    description: Seconds to wait for a target container and optional HTTP health endpoint to be ready.
+  repositories:
+    name: Managed repositories
+    description: Configure one entry per add-on. Entries can share a repository with different subdirectories.
