@@ -1,3 +1,7 @@
+## Automatic updates
+
+Enabled by default, with a 60-second check interval. Set `automatic_updates: false` to disable scheduled and startup deployments. Manual updates remain available. Set `check_interval` to 15–86400 seconds. Polling checks all enabled entries regardless of their startup toggle. Busy operations delay checks; interrupted deployments pause them until recovery. Build and startup time is additional, with no guaranteed maximum. Web UI settings apply immediately; changes through Home Assistant Configuration require restarting the manager.
+
 # Add-on Development Manager
 
 Open **Web UI** to configure repository entries, deploy code, select earlier commits and control the managed local add-ons.

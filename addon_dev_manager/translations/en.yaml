@@ -1,4 +1,10 @@
 configuration:
+  automatic_updates:
+    name: Automatic updates
+    description: Regularly deploy changed source for enabled entries. Turning this off also disables automatic startup deployment.
+  check_interval:
+    name: Check interval
+    description: Seconds between automatic checks, default 60. Busy operations or recovery can delay checks.
   update_on_start:
     name: Update on startup
     description: Check and deploy enabled startup entries when this controller starts or restarts.

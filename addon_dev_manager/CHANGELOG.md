@@ -1,3 +1,9 @@
+## 0.1.1
+
+- Enable automatic update checks by default every 60 seconds.
+- Add automatic update toggle and configurable interval to Home Assistant configuration and the web UI.
+- Serialise checks with manual operations and pause during recovery.
+
 # Changelog
 
 ## 0.1.0, 3 October 2026

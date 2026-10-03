@@ -32,6 +32,9 @@
     <form id="settings-form">
       <div class="section-heading"><h2>Repositories & settings</h2><button type="button" id="close-settings" class="icon-button" aria-label="Close settings">×</button></div>
       <p class="muted">Each entry selects one add-on directory. Several entries can use the same repository.</p>
+      <label class="check"><input id="automatic-toggle" type="checkbox"> Automatic updates</label>
+      <label>Check interval (seconds)<input id="check-interval" type="number" min="15" max="86400" required></label>
+      <p class="hint">Checks enabled entries regularly and deploys changed source. Turning this off also disables automatic startup deployment. Manual updates remain available.</p>
       <label class="check"><input id="startup-toggle" type="checkbox"> Check and deploy on controller startup</label>
       <p class="hint">Restarting this manager will update entries with their startup option enabled. Unchanged commits are skipped.</p>
       <div id="repo-rows"></div>

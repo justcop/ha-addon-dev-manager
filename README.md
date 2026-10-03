@@ -10,9 +10,11 @@ If the Home Assistant definition changes, the manager reloads store metadata onc
 
 The interface distinguishes the **source version and commit** from the **container definition version**. Code-only deployments keep the existing definition version to avoid a store reload. A changed definition gets a version such as `1.2.3-dev.abcdef123456`. Git history records the exact source actually deployed in either case. For repositories containing several add-ons, changes outside the selected subdirectory are skipped as well.
 
-## Install
+Automatic updates are enabled by default. The controller checks enabled entries every 60 seconds and deploys changed source, even when the source version number has not changed. Configure **Automatic updates** and **Check interval** in Home Assistant or **Repositories & settings**. Turning automatic updates off also disables startup deployments; manual updates still work. Settings saved in the web UI take effect immediately; changes in Home Assistant Configuration require restarting the manager.
 
-Once this repository is published:
+The interval bounds the wait until the next check only while the controller is idle and GitHub is reachable. Downloads, builds, global store refreshes for configuration changes and startup checks take additional time. Busy operations delay polling. Interrupted deployments pause it until recovery. There is no guaranteed maximum completion time. Each entry’s startup toggle controls startup deployment only; regular polling includes all enabled entries.
+
+## Install
 
 1. Open **Settings → Apps → App store → ⋮ → Repositories**. Older Home Assistant versions call these Add-ons.
 2. Add `https://github.com/justcop/ha-addon-dev-manager`.

@@ -62,6 +62,7 @@ class Controller:
             self.state = dict(current={}, transactions={}, history=[], sequence=0)
         self.lock = threading.RLock()
         self.busy = False
+        self.next_auto_check = time.monotonic() + self.options.get("check_interval", 60)
         self.job = dict(status="idle", phase="Ready", events=[])
         self._validate_bindings(self.targets)
 
@@ -93,30 +94,64 @@ class Controller:
             return dict(targets=deepcopy(self.targets), current=deepcopy(self.state["current"]),
                         transactions=deepcopy(self.state["transactions"]),
                         history=deepcopy(self.state["history"]), job=deepcopy(self.job), busy=self.busy,
-                        settings={"update_on_start": self.options.get("update_on_start", True),
+                        settings={"automatic_updates": self.options.get("automatic_updates", True),
+                                  "check_interval": self.options.get("check_interval", 60),
+                                  "update_on_start": self.options.get("update_on_start", True),
                                   "stop_timeout": self.options.get("stop_timeout", 60),
                                   "health_timeout": self.options.get("health_timeout", 120),
                                   "token_configured": bool(self.source.token)})
 
-    def configure(self, rows, update_on_start):
+    def configure(self, rows, update_on_start, automatic_updates=None, check_interval=None):
         with self.lock:
             if self.busy or self.state["transactions"]:
                 raise ValueError("Finish or recover the active deployment before changing repositories")
             options = deepcopy(self.options)
             options.update(repositories=rows, update_on_start=update_on_start)
+            if automatic_updates is not None:
+                if type(automatic_updates) is not bool:
+                    raise ValueError("Automatic updates must be a boolean")
+                options["automatic_updates"] = automatic_updates
+            if check_interval is not None:
+                if type(check_interval) is not int or not 15 <= check_interval <= 86400:
+                    raise ValueError("Check interval must be 15 to 86400 seconds")
+                options["check_interval"] = check_interval
             targets = targets_from_options(options)
             self._validate_bindings(targets)
             # Supervisor owns options.json, not the controller. Persist through its API.
             self.supervisor.post("/addons/self/options", {"options": options})
             self.options, self.targets = options, targets
+            self.next_auto_check = time.monotonic() + options.get("check_interval", 60)
+
+    def automatic_tick(self, clock=None):
+        """Schedule serial polling without overlapping jobs or retrying interrupted writes."""
+        clock = time.monotonic() if clock is None else clock
+        with self.lock:
+            if (not self.options.get("automatic_updates", True) or self.busy
+                    or self.state["transactions"] or clock < self.next_auto_check):
+                return False
+            self.next_auto_check = clock + self.options.get("check_interval", 60)
+            if not any(t["enabled"] for t in self.targets):
+                return False
+            self.submit("automatic")
+            return True
+
+    def start_automatic_updates(self):
+        def poll():
+            while True:
+                time.sleep(1)
+                try:
+                    self.automatic_tick()
+                except Exception:
+                    LOG.exception("Automatic update scheduler failed")
+        threading.Thread(target=poll, daemon=True).start()
 
     def submit(self, action, ident=None, sha=None):
         with self.lock:
             if self.busy:
                 raise ValueError("Another operation is already running")
-            if action not in ("deploy_all", "startup", "deploy", "check", "start", "stop", "restart", "rollback", "recover"):
+            if action not in ("deploy_all", "automatic", "startup", "deploy", "check", "start", "stop", "restart", "rollback", "recover"):
                 raise ValueError("Unknown action")
-            if action not in ("deploy_all", "startup"):
+            if action not in ("deploy_all", "automatic", "startup"):
                 self.target(ident)
             if self.state["transactions"] and action not in ("recover", "rollback"):
                 raise ValueError("Recover interrupted deployments before performing other operations")
@@ -126,7 +161,7 @@ class Controller:
 
     def _worker(self, action, ident, sha):
         try:
-            if action in ("deploy_all", "startup"):
+            if action in ("deploy_all", "automatic", "startup"):
                 self.deploy_batch([t for t in self.targets if t["enabled"]
                                    and (action != "startup" or t["update_on_start"])])
             elif action == "deploy":

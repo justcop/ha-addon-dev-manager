@@ -94,7 +94,8 @@ def create_app(controller, testing=False):
         body = request.get_json()
         if not isinstance(body, dict) or type(body.get("update_on_start")) is not bool:
             raise ValueError("Settings need repositories and an update_on_start boolean")
-        controller.configure(body.get("repositories"), body["update_on_start"])
+        controller.configure(body.get("repositories"), body["update_on_start"],
+                             body.get("automatic_updates"), body.get("check_interval"))
         return jsonify(ok=True)
 
     @app.post("/api/actions")
@@ -103,7 +104,7 @@ def create_app(controller, testing=False):
         if not isinstance(body, dict):
             raise ValueError("Expected an action object")
         action, ident, sha = body.get("action"), body.get("id"), body.get("sha")
-        if action == "startup":
+        if action in ("startup", "automatic"):
             raise ValueError("Startup is an internal action")
         if sha is not None and (not isinstance(sha, str) or not SHA.fullmatch(sha)):
             raise ValueError("Select a commit from version history")
@@ -130,8 +131,9 @@ def main():
     app = create_app(controller)
     if controller.state["transactions"]:
         controller.event("An interrupted deployment needs recovery. Open the controller before updating.")
-    elif options.get("update_on_start", True):
+    elif options.get("automatic_updates", True) and options.get("update_on_start", True):
         controller.submit("startup")
+    controller.start_automatic_updates()
     serve(app, host="0.0.0.0", port=8099, threads=6)
 
 
