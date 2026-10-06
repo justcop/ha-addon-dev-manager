@@ -1,3 +1,10 @@
+## 0.2.0
+
+- Add repository scanning and a drop-down picker for add-ons.
+- Auto-fill manager ID, repository, branch, source path and standard defaults from each add-on config.
+- Keep the health check port prominent while moving uncommon settings under Advanced.
+- Add dedicated add-on artwork and refreshed in-app branding.
+
 ## 0.1.1
 
 - Enable automatic update checks by default every 60 seconds.
