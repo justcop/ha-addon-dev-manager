@@ -138,8 +138,8 @@ def test_secrets_never_returned_in_status_or_runtime(web):
 def test_ingress_paths_work_without_absolute_static_urls(web):
     client, _, _ = web
     response = client.get("/", headers={"X-Ingress-Path": "/api/hassio_ingress/example"}, environ_base={"REMOTE_ADDR": "172.30.32.2"})
-    assert 'src="/api/hassio_ingress/example/static/app.js"' in response.text
-    assert 'href="/api/hassio_ingress/example/static/style.css"' in response.text
+    assert 'src="/api/hassio_ingress/example/static/app.js?v=' in response.text
+    assert 'href="/api/hassio_ingress/example/static/style.css?v=' in response.text
 
 
 def test_actual_home_assistant_admin_check_is_enforced(deployment):
