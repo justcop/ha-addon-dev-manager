@@ -70,7 +70,17 @@ def create_app(controller, testing=False):
 
     @app.get("/")
     def index():
-        return render_template("index.html", csrf=csrf,
+        # Pre-discover the user's primary add-on repository server-side. This
+        # makes the common path work even if the browser-side discovery control
+        # is unavailable for any reason.
+        default_discovery = {"repository": "justcop/home-assistant-addons", "branch": "main", "addons": [], "error": ""}
+        try:
+            default_discovery.update(discover_addons(
+                default_discovery["repository"], default_discovery["branch"], controller.source.token
+            ))
+        except Exception as exc:
+            default_discovery["error"] = str(exc)
+        return render_template("index.html", csrf=csrf, default_discovery=default_discovery,
                                base=request.headers.get("X-Ingress-Path", "").rstrip("/"))
 
     @app.get("/api/status")
