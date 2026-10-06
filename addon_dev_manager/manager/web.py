@@ -90,13 +90,12 @@ def create_app(controller, testing=False):
             return jsonify([])
         return jsonify(controller.source.versions(target))
 
-    @app.post("/api/discover")
+    @app.get("/api/discover")
     def discover():
-        body = request.get_json()
-        if not isinstance(body, dict):
-            raise ValueError("Expected repository discovery settings")
-        repository = body.get("repository", "")
-        branch = body.get("branch", "")
+        # Discovery is read-only, so use GET. This also avoids ingress/proxy
+        # environments that are unnecessarily fussy about POST headers.
+        repository = request.args.get("repository", "")
+        branch = request.args.get("branch", "")
         if not isinstance(repository, str) or not isinstance(branch, str):
             raise ValueError("Repository and branch must be text")
         return jsonify(discover_addons(repository, branch, controller.source.token))
