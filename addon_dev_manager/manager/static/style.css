@@ -20,3 +20,7 @@
 .discovery-summary.scanning{color:var(--text)}
 .discovery-summary.success{color:#75d8ad}
 .discovery-summary.error{color:#ff9d9d;font-weight:600}
+
+.other-repo{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.other-repo summary{cursor:pointer;color:var(--muted);font-size:12px}
+.other-repo[open] summary{color:var(--text);margin-bottom:10px}
