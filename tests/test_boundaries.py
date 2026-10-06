@@ -263,3 +263,48 @@ def test_quick_add_is_a_separate_form_from_settings(web):
     assert quick_end < settings_start
     assert 'id="add-discovered"' in html[quick_start:quick_end]
     assert 'id="add-discovered"' not in html[settings_start:html.index("</form>", settings_start)]
+
+
+def test_git_discovery_finds_addons_without_github_api(monkeypatch):
+    from manager.discovery import discover_addons
+
+    monkeypatch.setattr(
+        "manager.discovery.subprocess.run",
+        lambda *args, **kwargs: Mock(returncode=0, stdout=b"", stderr=b""),
+    )
+
+    calls = []
+    def fake_git(git_dir, token, *args, binary=False):
+        calls.append(args)
+        if args[:3] == ("ls-tree", "-r", "--name-only"):
+            return "money_locations/config.yaml\nmoney_locations/Dockerfile\nREADME.md"
+        if args[0] == "show":
+            return (
+                b"name: Money Locations\n"
+                b"slug: money_locations\n"
+                b"description: Test add-on\n"
+                b"version: 1.0.0\n"
+                b"arch:\n  - amd64\n"
+                b"ingress_port: 8099\n"
+            )
+        return b"" if binary else ""
+
+    monkeypatch.setattr("manager.discovery._run_git", fake_git)
+    result = discover_addons("justcop/home-assistant-addons", "main", "private-secret")
+
+    assert result["repository"] == "justcop/home-assistant-addons"
+    assert result["branch"] == "main"
+    assert result["addons"] == [{
+        "id": "money_locations",
+        "name": "Money Locations",
+        "slug": "money_locations",
+        "description": "Test add-on",
+        "version": "1.0.0",
+        "arch": ["amd64"],
+        "repository": "justcop/home-assistant-addons",
+        "branch": "main",
+        "path": "money_locations",
+        "health_port": 8099,
+        "health_path": "/",
+    }]
+    assert any(call[0] == "fetch" for call in calls)
