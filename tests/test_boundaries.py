@@ -248,3 +248,18 @@ def test_native_add_discovered_rejects_stale_selection(web, monkeypatch):
     assert response.status_code == 302
     assert "add_error=" in response.headers["Location"]
     assert not c.configure.called
+
+
+def test_quick_add_is_a_separate_form_from_settings(web):
+    client, _, _ = web
+    response = client.get("/", environ_base={"REMOTE_ADDR": "172.30.32.2"})
+    html = response.text
+    assert 'id="quick-add-form"' in html
+    assert 'action="/add-discovered"' in html
+    assert 'id="settings-form"' in html
+    quick_start = html.index('id="quick-add-form"')
+    quick_end = html.index("</form>", quick_start)
+    settings_start = html.index('id="settings-form"')
+    assert quick_end < settings_start
+    assert 'id="add-discovered"' in html[quick_start:quick_end]
+    assert 'id="add-discovered"' not in html[settings_start:html.index("</form>", settings_start)]
