@@ -100,7 +100,7 @@ function addRow(t={id:"",repository:"",branch:"main",path:".",enabled:true,updat
     const l=element("label",undefined,"check"),input=element("input");input.type="checkbox";input.name=key;input.checked=t[key]!==false;l.append(input,document.createTextNode(label));footer.append(l);
   }
   const remove=element("button","Remove entry","secondary");remove.type="button";remove.addEventListener("click",()=>row.remove());footer.append(remove);
-  details.append(summary,fields,footer);row.append(details);$("repo-rows").append(row);
+  details.append(summary,fields,footer);row.append(details);$("repo-rows").append(row);return row;
 }
 
 function configuredIds(){
@@ -140,14 +140,33 @@ async function discoverRepository(silent=false){
   }finally{$("discover-addons").disabled=false;$("discover-addons").textContent="Scan repository";}
 }
 function addSelectedDiscovered(){
-  const addon=discoveredAddons[Number($("discovered-addon").value)];
-  if(!addon)return;
-  if(configuredIds().has(addon.id)){toast(addon.name+" is already configured.");return;}
-  addRow({...addon,enabled:true,update_on_start:true},true);
-  toast(addon.name+" added. Set the health port if it needs an HTTP check, then save settings.");
+  const result=$("add-result");
+  try{
+    const select=$("discovered-addon");
+    const index=Number(select.value);
+    const addon=discoveredAddons[index];
+    if(!addon)throw new Error("The selected add-on could not be read. Reopen Repositories & settings and try again.");
+    if(configuredIds().has(addon.id)){
+      result.textContent=addon.name+" is already configured.";
+      result.className="add-result warning";
+      result.hidden=false;
+      return;
+    }
+    const row=addRow({...addon,enabled:true,update_on_start:true},true);
+    result.textContent="Added "+addon.name+". Review the health port below, then press Save settings.";
+    result.className="add-result success";
+    result.hidden=false;
+    row.classList.add("just-added");
+    row.scrollIntoView({behavior:"smooth",block:"center"});
+    setTimeout(()=>row.classList.remove("just-added"),1800);
+  }catch(e){
+    result.textContent="Could not add the selected add-on: "+(e?.message||String(e));
+    result.className="add-result error";
+    result.hidden=false;
+  }
 }
 
-$("configure").addEventListener("click",async()=>{if(!snapshot)return;$("repo-rows").replaceChildren();for(const t of snapshot.targets)addRow(t,true);$("startup-toggle").checked=snapshot.settings.update_on_start;$("automatic-toggle").checked=snapshot.settings.automatic_updates;$("check-interval").value=snapshot.settings.check_interval;$("settings-error").hidden=true;$("settings-dialog").showModal();discoveryCache.clear();await discoverRepository(true);});
+$("configure").addEventListener("click",async()=>{if(!snapshot)return;$("add-result").hidden=true;$("repo-rows").replaceChildren();for(const t of snapshot.targets)addRow(t,true);$("startup-toggle").checked=snapshot.settings.update_on_start;$("automatic-toggle").checked=snapshot.settings.automatic_updates;$("check-interval").value=snapshot.settings.check_interval;$("settings-error").hidden=true;$("settings-dialog").showModal();discoveryCache.clear();await discoverRepository(true);});
 $("close-settings").addEventListener("click",()=>$("settings-dialog").close());$("cancel-settings").addEventListener("click",()=>$("settings-dialog").close());$("add-repo").addEventListener("click",()=>addRow(undefined,false));$("discover-addons").addEventListener("click",()=>discoverRepository(false));$("add-discovered").addEventListener("click",addSelectedDiscovered);
 $("settings-form").addEventListener("submit",async e=>{e.preventDefault();const rows=[...document.querySelectorAll(".repo-row")].map(row=>Object.fromEntries([...row.querySelectorAll("input")].map(i=>[i.name,i.type==="checkbox"?i.checked:i.type==="number"?Number(i.value):i.value])));try{await api("settings",{repositories:rows,update_on_start:$("startup-toggle").checked,automatic_updates:$("automatic-toggle").checked,check_interval:Number($("check-interval").value)});$("settings-dialog").close();await refresh();toast("Settings saved to Home Assistant.");}catch(err){$("settings-error").textContent=err.message;$("settings-error").hidden=false;}});
 $("update-all").addEventListener("click",()=>perform("deploy_all"));
