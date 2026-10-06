@@ -12,7 +12,7 @@
 <body>
   <main>
     <header>
-      <div class="brand"><span class="brand-icon" aria-hidden="true">↗</span><div><span class="eyebrow">HOME ASSISTANT</span><h1>Development Manager</h1></div></div>
+      <div class="brand"><img class="brand-logo" src="{{ base }}/static/logo.svg" alt=""><div><span class="eyebrow">HOME ASSISTANT</span><h1>Development Manager</h1></div></div>
       <button id="configure" class="secondary">Repositories & settings</button>
     </header>
     <section class="intro">
@@ -31,14 +31,30 @@
   <dialog id="settings-dialog">
     <form id="settings-form">
       <div class="section-heading"><h2>Repositories & settings</h2><button type="button" id="close-settings" class="icon-button" aria-label="Close settings">×</button></div>
-      <p class="muted">Each entry selects one add-on directory. Several entries can use the same repository.</p>
+      <p class="muted">Pick an add-on from your repository and the manager will fill in the repository, branch, path and ID for you.</p>
+      <section class="quick-add">
+        <div class="quick-add-heading">
+          <div><h3>Quick add from GitHub</h3><p class="hint">Choose an add-on from a repository. Only the health check port normally needs your input.</p></div>
+        </div>
+        <div class="quick-source">
+          <label class="field">Repository<input id="discover-repository" value="justcop/home-assistant-addons" placeholder="owner/repository"></label>
+          <label class="field">Branch<input id="discover-branch" value="main" placeholder="main"></label>
+          <button type="button" id="discover-addons" class="secondary">Scan repository</button>
+        </div>
+        <div class="quick-picker">
+          <label class="field">Add-on<select id="discovered-addon" disabled><option>Scan repository first</option></select></label>
+          <button type="button" id="add-discovered" class="primary" disabled>Add selected add-on</button>
+        </div>
+        <div id="discovery-summary" class="discovery-summary" hidden></div>
+      </section>
+      <div class="configured-heading"><h3>Configured add-ons</h3><span class="hint">Health port is shown first. Everything else is under Advanced.</span></div>
       <label class="check"><input id="automatic-toggle" type="checkbox"> Automatic updates</label>
       <label>Check interval (seconds)<input id="check-interval" type="number" min="15" max="86400" required></label>
       <p class="hint">Checks enabled entries regularly and deploys changed source. Turning this off also disables automatic startup deployment. Manual updates remain available.</p>
       <label class="check"><input id="startup-toggle" type="checkbox"> Check and deploy on controller startup</label>
       <p class="hint">Restarting this manager will update entries with their startup option enabled. Unchanged commits are skipped.</p>
       <div id="repo-rows"></div>
-      <button type="button" id="add-repo" class="secondary">+ Add repository</button>
+      <button type="button" id="add-repo" class="secondary">+ Add manually</button>
       <p class="hint">For private repositories, set GitHub token in this add-on’s Home Assistant Configuration tab. The token is never sent to this page.</p>
       <div id="settings-error" class="notice" hidden role="alert"></div>
       <div class="dialog-footer"><button type="button" id="cancel-settings" class="secondary">Cancel</button><button type="submit" class="primary">Save settings</button></div>
