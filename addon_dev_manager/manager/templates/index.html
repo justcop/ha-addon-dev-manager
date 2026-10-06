@@ -6,8 +6,8 @@
   <meta name="csrf-token" content="{{ csrf }}">
   <meta name="app-base" content="{{ base }}">
   <title>Add-on Development Manager</title>
-  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.2.2">
-  <script src="{{ base }}/static/app.js?v=0.2.2" defer></script>
+  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.2.3">
+  <script src="{{ base }}/static/app.js?v=0.2.3" defer></script>
 </head>
 <body>
   <main>
@@ -36,16 +36,36 @@
         <div class="quick-add-heading">
           <div><h3>Quick add from GitHub</h3><p class="hint">Choose an add-on from a repository. Only the health check port normally needs your input.</p></div>
         </div>
-        <div class="quick-source">
-          <label class="field">Repository<input id="discover-repository" value="justcop/home-assistant-addons" placeholder="owner/repository"></label>
-          <label class="field">Branch<input id="discover-branch" value="main" placeholder="main"></label>
-          <button type="button" id="discover-addons" class="secondary">Scan repository</button>
-        </div>
         <div class="quick-picker">
-          <label class="field">Add-on<select id="discovered-addon" disabled><option>Scan repository first</option></select></label>
-          <button type="button" id="add-discovered" class="primary" disabled>Add selected add-on</button>
+          <label class="field">Add-on
+            <select id="discovered-addon" {% if not default_discovery.addons %}disabled{% endif %}>
+              {% if default_discovery.addons %}
+                {% for addon in default_discovery.addons %}
+                  <option value="{{ loop.index0 }}">{{ addon.name }} · {{ addon.path }}</option>
+                {% endfor %}
+              {% else %}
+                <option>No add-ons available</option>
+              {% endif %}
+            </select>
+          </label>
+          <button type="button" id="add-discovered" class="primary" {% if not default_discovery.addons %}disabled{% endif %}>Add selected add-on</button>
         </div>
-        <div id="discovery-summary" class="discovery-summary" hidden></div>
+        <div id="discovery-summary" class="discovery-summary {% if default_discovery.error %}error{% else %}success{% endif %}">
+          {% if default_discovery.error %}
+            Repository discovery failed: {{ default_discovery.error }}
+          {% else %}
+            {{ default_discovery.addons|length }} add-on{% if default_discovery.addons|length != 1 %}s{% endif %} loaded automatically from {{ default_discovery.repository }}.
+          {% endif %}
+        </div>
+        <script id="default-discovery" type="application/json">{{ default_discovery|tojson }}</script>
+        <details class="other-repo">
+          <summary>Use a different repository</summary>
+          <div class="quick-source">
+            <label class="field">Repository<input id="discover-repository" value="justcop/home-assistant-addons" placeholder="owner/repository"></label>
+            <label class="field">Branch<input id="discover-branch" value="main" placeholder="main"></label>
+            <button type="button" id="discover-addons" class="secondary">Load repository</button>
+          </div>
+        </details>
       </section>
       <div class="configured-heading"><h3>Configured add-ons</h3><span class="hint">Health port is shown first. Everything else is under Advanced.</span></div>
       <label class="check"><input id="automatic-toggle" type="checkbox"> Automatic updates</label>
