@@ -6,9 +6,10 @@ import logging
 import os
 from pathlib import Path
 import secrets
+from urllib.parse import quote
 import time
 
-from flask import Flask, abort, jsonify, render_template, request
+from flask import Flask, abort, jsonify, redirect, render_template, request
 
 from .controller import Controller
 from .discovery import discover_addons
@@ -42,10 +43,11 @@ def create_app(controller, testing=False):
             if username not in admin_cache["names"]:
                 abort(403, "Only Home Assistant administrators can manage development add-ons.")
         if request.method != "GET":
-            supplied = request.headers.get("X-CSRF-Token", "")
+            native_form = request.endpoint == "add_discovered"
+            supplied = request.form.get("_csrf", "") if native_form else request.headers.get("X-CSRF-Token", "")
             if not secrets.compare_digest(csrf, supplied):
                 abort(403, "Missing or expired request token. Reload the page.")
-            if not request.is_json:
+            if not native_form and not request.is_json:
                 abort(415, "Send application/json")
 
     @app.after_request
@@ -82,7 +84,56 @@ def create_app(controller, testing=False):
             except Exception as exc:
                 default_discovery["error"] = str(exc)
         return render_template("index.html", csrf=csrf, default_discovery=default_discovery,
+                               add_message=request.args.get("added", ""),
+                               add_error=request.args.get("add_error", ""),
                                base=request.headers.get("X-Ingress-Path", "").rstrip("/"))
+
+    @app.post("/add-discovered")
+    def add_discovered():
+        base = request.headers.get("X-Ingress-Path", "").rstrip("/")
+        destination = (base + "/") if base else "/"
+        try:
+            repository = request.form.get("discovery_repository", "justcop/home-assistant-addons").strip()
+            branch = request.form.get("discovery_branch", "main").strip()
+            path = request.form.get("discovered_path", "").strip()
+            try:
+                health_port = int(request.form.get("discovered_health_port", "0"))
+            except (TypeError, ValueError):
+                raise ValueError("Health port must be a number from 0 to 65535") from None
+            if not 0 <= health_port <= 65535:
+                raise ValueError("Health port must be a number from 0 to 65535")
+
+            discovery = discover_addons(repository, branch, controller.source.token)
+            addon = next((item for item in discovery["addons"] if item["path"] == path), None)
+            if addon is None:
+                raise ValueError("That add-on is no longer present in the repository. Reopen settings and try again.")
+
+            rows = [dict(target) for target in controller.targets]
+            if any(target["id"] == addon["id"] for target in rows):
+                raise ValueError(addon["name"] + " is already configured")
+            if any(target["repository"].replace("https://github.com/", "").removesuffix(".git") == discovery["repository"]
+                   and target["path"] == addon["path"] for target in rows):
+                raise ValueError(addon["name"] + " is already configured")
+
+            rows.append({
+                "id": addon["id"],
+                "repository": discovery["repository"],
+                "branch": discovery["branch"],
+                "path": addon["path"],
+                "enabled": True,
+                "update_on_start": True,
+                "health_port": health_port,
+                "health_path": "/",
+            })
+            controller.configure(
+                rows,
+                controller.options.get("update_on_start", True),
+                controller.options.get("automatic_updates", True),
+                controller.options.get("check_interval", 60),
+            )
+            return redirect(destination + "?added=" + quote(addon["name"]))
+        except ValueError as exc:
+            return redirect(destination + "?add_error=" + quote(str(exc)))
 
     @app.get("/api/status")
     def status():
