@@ -9,7 +9,9 @@ let discoveredAddons = [];
 function element(tag, text, className) {const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(className)e.className=className;return e;}
 async function api(path, body) {
   const r=await fetch(base+"/api/"+path,{method:body===undefined?"GET":"POST",headers:body===undefined?{}:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:body===undefined?undefined:JSON.stringify(body)});
-  const data=await r.json(); if(!r.ok)throw new Error(data.error||"Request failed");return data;
+  let data;
+  try { data=await r.json(); } catch (_) { throw new Error("The manager returned an unreadable response. Restart the add-on and try again."); }
+  if(!r.ok)throw new Error(data.error||"Request failed");return data;
 }
 function toast(message) {$("toast").textContent=message;$("toast").hidden=false;setTimeout(()=>{$("toast").hidden=true;},5000);}
 function button(text, action, className="secondary") {const b=element("button",text,className);b.dataset.operation="true";b.addEventListener("click",action);return b;}
@@ -116,16 +118,21 @@ function renderDiscovery(result){
 }
 async function discoverRepository(silent=false){
   const repository=$("discover-repository").value.trim(),branch=$("discover-branch").value.trim();
-  if(!repository)return;
+  const summary=$("discovery-summary");
+  if(!repository){summary.textContent="Enter a GitHub repository first.";summary.className="discovery-summary error";summary.hidden=false;return;}
   const key=repository+"@"+branch;
   try{
     $("discover-addons").disabled=true;$("discover-addons").textContent="Scanning…";
+    summary.textContent="Scanning "+repository+" for Home Assistant add-ons…";summary.className="discovery-summary scanning";summary.hidden=false;
+    // Discovery is deliberately GET/read-only. Cache only successful results.
+    const query=new URLSearchParams({repository,branch});
     let result=discoveryCache.get(key);
-    if(!result){result=await api("discover",{repository,branch});discoveryCache.set(key,result);}
+    if(!result){result=await api("discover?"+query.toString());discoveryCache.set(key,result);}
+    summary.className="discovery-summary success";
     renderDiscovery(result);
   }catch(e){
     discoveredAddons=[];$("discovered-addon").replaceChildren(element("option","Unable to scan repository"));$("discovered-addon").disabled=true;$("add-discovered").disabled=true;
-    $("discovery-summary").textContent=e.message;$("discovery-summary").hidden=false;if(!silent)toast(e.message);
+    summary.textContent="Scan failed: "+e.message;summary.className="discovery-summary error";summary.hidden=false;if(!silent)toast("Repository scan failed: "+e.message);
   }finally{$("discover-addons").disabled=false;$("discover-addons").textContent="Scan repository";}
 }
 function addSelectedDiscovered(){
