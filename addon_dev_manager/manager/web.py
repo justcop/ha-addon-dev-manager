@@ -11,6 +11,7 @@ import time
 from flask import Flask, abort, jsonify, render_template, request
 
 from .controller import Controller
+from .discovery import discover_addons
 from .source import SHA
 from .supervisor import Supervisor
 
@@ -88,6 +89,17 @@ def create_app(controller, testing=False):
         if not (controller.source.root / (ident + ".git")).exists():
             return jsonify([])
         return jsonify(controller.source.versions(target))
+
+    @app.post("/api/discover")
+    def discover():
+        body = request.get_json()
+        if not isinstance(body, dict):
+            raise ValueError("Expected repository discovery settings")
+        repository = body.get("repository", "")
+        branch = body.get("branch", "")
+        if not isinstance(repository, str) or not isinstance(branch, str):
+            raise ValueError("Repository and branch must be text")
+        return jsonify(discover_addons(repository, branch, controller.source.token))
 
     @app.post("/api/settings")
     def settings():
