@@ -6,6 +6,10 @@ let snapshot, cardSignature = "", historySignature = "", runtime = {}, refreshin
 const versionsCache = new Map();
 const discoveryCache = new Map();
 let discoveredAddons = [];
+try {
+  const seed=document.getElementById("default-discovery");
+  if(seed) discoveredAddons=JSON.parse(seed.textContent).addons||[];
+} catch (_) { discoveredAddons=[]; }
 function element(tag, text, className) {const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(className)e.className=className;return e;}
 async function api(path, body) {
   const r=await fetch(base+"/api/"+path,{method:body===undefined?"GET":"POST",headers:body===undefined?{}:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:body===undefined?undefined:JSON.stringify(body)});
@@ -143,7 +147,7 @@ function addSelectedDiscovered(){
   toast(addon.name+" added. Set the health port if it needs an HTTP check, then save settings.");
 }
 
-$("configure").addEventListener("click",()=>{if(!snapshot)return;$("repo-rows").replaceChildren();for(const t of snapshot.targets)addRow(t,true);$("startup-toggle").checked=snapshot.settings.update_on_start;$("automatic-toggle").checked=snapshot.settings.automatic_updates;$("check-interval").value=snapshot.settings.check_interval;$("settings-error").hidden=true;$("settings-dialog").showModal();discoverRepository(true);});
+$("configure").addEventListener("click",()=>{if(!snapshot)return;$("repo-rows").replaceChildren();for(const t of snapshot.targets)addRow(t,true);$("startup-toggle").checked=snapshot.settings.update_on_start;$("automatic-toggle").checked=snapshot.settings.automatic_updates;$("check-interval").value=snapshot.settings.check_interval;$("settings-error").hidden=true;$("settings-dialog").showModal();});
 $("close-settings").addEventListener("click",()=>$("settings-dialog").close());$("cancel-settings").addEventListener("click",()=>$("settings-dialog").close());$("add-repo").addEventListener("click",()=>addRow(undefined,false));$("discover-addons").addEventListener("click",()=>discoverRepository(false));$("add-discovered").addEventListener("click",addSelectedDiscovered);
 $("settings-form").addEventListener("submit",async e=>{e.preventDefault();const rows=[...document.querySelectorAll(".repo-row")].map(row=>Object.fromEntries([...row.querySelectorAll("input")].map(i=>[i.name,i.type==="checkbox"?i.checked:i.type==="number"?Number(i.value):i.value])));try{await api("settings",{repositories:rows,update_on_start:$("startup-toggle").checked,automatic_updates:$("automatic-toggle").checked,check_interval:Number($("check-interval").value)});$("settings-dialog").close();await refresh();toast("Settings saved to Home Assistant.");}catch(err){$("settings-error").textContent=err.message;$("settings-error").hidden=false;}});
 $("update-all").addEventListener("click",()=>perform("deploy_all"));
