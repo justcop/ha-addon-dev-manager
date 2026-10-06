@@ -6,8 +6,8 @@
   <meta name="csrf-token" content="{{ csrf }}">
   <meta name="app-base" content="{{ base }}">
   <title>Add-on Development Manager</title>
-  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.2.7">
-  <script src="{{ base }}/static/app.js?v=0.2.7" defer></script>
+  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.2.8">
+  <script src="{{ base }}/static/app.js?v=0.2.8" defer></script>
 </head>
 <body>
   <main>
@@ -31,10 +31,11 @@
     <footer>Source is versioned with Git. Settings and application data stay with Home Assistant.<br>Definition changes still require a Supervisor repository refresh. Container builds may take a few minutes.</footer>
   </main>
   <dialog id="settings-dialog">
-    <form id="settings-form" method="post">
+    <div class="section-heading"><h2>Repositories & settings</h2><button type="button" id="close-settings" class="icon-button" aria-label="Close settings">×</button></div>
+    <p class="muted">Pick an add-on from your repository and the manager will fill in the repository, branch, path and ID for you.</p>
+
+    <form id="quick-add-form" method="post" action="{{ base }}/add-discovered">
       <input type="hidden" name="_csrf" value="{{ csrf }}">
-      <div class="section-heading"><h2>Repositories & settings</h2><button type="button" id="close-settings" class="icon-button" aria-label="Close settings">×</button></div>
-      <p class="muted">Pick an add-on from your repository and the manager will fill in the repository, branch, path and ID for you.</p>
       <section class="quick-add">
         <div class="quick-add-heading">
           <div><h3>Quick add from GitHub</h3><p class="hint">Choose an add-on from a repository. The list refreshes automatically whenever you open these settings.</p></div>
@@ -44,7 +45,7 @@
             <select id="discovered-addon" name="discovered_path" {% if not default_discovery.addons %}disabled{% endif %}>
               {% if default_discovery.addons %}
                 {% for addon in default_discovery.addons %}
-                  <option value="{{ addon.path }}">{{ addon.name }} · {{ addon.path }}</option>
+                  <option value="{{ addon.path }}" data-health-port="{{ addon.health_port }}">{{ addon.name }} · {{ addon.path }}</option>
                 {% endfor %}
               {% else %}
                 <option>No add-ons available</option>
@@ -54,7 +55,7 @@
           <label class="field">Health port
             <input id="discovered-health-port" name="discovered_health_port" type="number" min="0" max="65535" value="{% if default_discovery.addons %}{{ default_discovery.addons[0].health_port }}{% else %}0{% endif %}">
           </label>
-          <button type="submit" id="add-discovered" class="primary" formaction="{{ base }}/add-discovered" formmethod="post" {% if not default_discovery.addons %}disabled{% endif %}>Add selected add-on</button>
+          <button type="submit" id="add-discovered" class="primary" {% if not default_discovery.addons %}disabled{% endif %}>Add selected add-on</button>
         </div>
         <div id="add-result" class="add-result" hidden role="status"></div>
         <div id="discovery-summary" class="discovery-summary {% if default_discovery.error %}error{% else %}success{% endif %}">
@@ -74,6 +75,9 @@
           </div>
         </details>
       </section>
+    </form>
+
+    <form id="settings-form">
       <div class="configured-heading"><h3>Configured add-ons</h3><span class="hint">Health port is shown first. Everything else is under Advanced.</span></div>
       <label class="check"><input id="automatic-toggle" type="checkbox"> Automatic updates</label>
       <label>Check interval (seconds)<input id="check-interval" type="number" min="15" max="86400" required></label>
