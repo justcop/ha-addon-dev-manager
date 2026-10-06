@@ -6,8 +6,8 @@
   <meta name="csrf-token" content="{{ csrf }}">
   <meta name="app-base" content="{{ base }}">
   <title>Add-on Development Manager</title>
-  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.2.5">
-  <script src="{{ base }}/static/app.js?v=0.2.5" defer></script>
+  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.2.6">
+  <script src="{{ base }}/static/app.js?v=0.2.6" defer></script>
 </head>
 <body>
   <main>
@@ -50,6 +50,7 @@
           </label>
           <button type="button" id="add-discovered" class="primary" {% if not default_discovery.addons %}disabled{% endif %}>Add selected add-on</button>
         </div>
+        <div id="add-result" class="add-result" hidden role="status"></div>
         <div id="discovery-summary" class="discovery-summary {% if default_discovery.error %}error{% else %}success{% endif %}">
           {% if default_discovery.error %}
             Repository discovery failed: {{ default_discovery.error }}
