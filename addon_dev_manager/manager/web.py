@@ -50,7 +50,7 @@ def create_app(controller, testing=False):
 
     @app.after_request
     def headers(response):
-        response.headers.update({"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+        response.headers.update({"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0", "X-Content-Type-Options": "nosniff",
                                  "Referrer-Policy": "same-origin",
                                  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; "
                                  "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"})
