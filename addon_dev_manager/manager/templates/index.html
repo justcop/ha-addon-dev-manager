@@ -6,8 +6,8 @@
   <meta name="csrf-token" content="{{ csrf }}">
   <meta name="app-base" content="{{ base }}">
   <title>Add-on Development Manager</title>
-  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.2.4">
-  <script src="{{ base }}/static/app.js?v=0.2.4" defer></script>
+  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.2.5">
+  <script src="{{ base }}/static/app.js?v=0.2.5" defer></script>
 </head>
 <body>
   <main>
@@ -34,8 +34,7 @@
       <p class="muted">Pick an add-on from your repository and the manager will fill in the repository, branch, path and ID for you.</p>
       <section class="quick-add">
         <div class="quick-add-heading">
-          <div><h3>Quick add from GitHub</h3><p class="hint">Choose an add-on from a repository. Only the health check port normally needs your input.</p></div>
-          <a class="secondary refresh-link" href="{{ base }}/">↻ Refresh add-on list</a>
+          <div><h3>Quick add from GitHub</h3><p class="hint">Choose an add-on from a repository. The list refreshes automatically whenever you open these settings.</p></div>
         </div>
         <div class="quick-picker">
           <label class="field">Add-on
