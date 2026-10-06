@@ -1,5 +1,5 @@
 name: Add-on Development Manager
-version: "0.2.2"
+version: "0.2.3"
 slug: addon_dev_manager
 description: Deploy GitHub commits to local add-ons and manage their lifecycle.
 url: https://github.com/justcop/ha-addon-dev-manager
