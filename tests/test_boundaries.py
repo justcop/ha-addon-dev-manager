@@ -155,3 +155,31 @@ def test_unknown_target_and_invalid_commit_do_not_schedule_actions(web):
     response = client.post("/api/actions", json={"action": "deploy", "id": "demo", "sha": "main; rm -rf /"}, headers={"X-CSRF-Token": token}, environ_base={"REMOTE_ADDR": "172.30.32.2"})
     assert response.status_code == 400
     assert not c.busy
+
+
+def test_discovery_endpoint_is_read_only_and_uses_configured_token(web, monkeypatch):
+    client, c, _ = web
+    observed = {}
+    def fake(repository, branch, token):
+        observed.update(repository=repository, branch=branch, token=token)
+        return {"repository": repository, "branch": branch, "addons": [{"id": "demo", "name": "Demo"}]}
+    monkeypatch.setattr("manager.web.discover_addons", fake)
+    response = client.get(
+        "/api/discover?repository=justcop%2Fhome-assistant-addons&branch=main",
+        environ_base={"REMOTE_ADDR": "172.30.32.2"},
+    )
+    assert response.status_code == 200
+    assert response.get_json()["addons"][0]["name"] == "Demo"
+    assert observed == {
+        "repository": "justcop/home-assistant-addons",
+        "branch": "main",
+        "token": c.source.token,
+    }
+
+
+def test_frontend_assets_are_cache_busted_and_not_cacheable(web):
+    client, _, _ = web
+    response = client.get("/", environ_base={"REMOTE_ADDR": "172.30.32.2"})
+    assert "static/app.js?v=" in response.text
+    assert "static/style.css?v=" in response.text
+    assert "no-cache" in response.headers["Cache-Control"]
