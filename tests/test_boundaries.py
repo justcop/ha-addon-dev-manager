@@ -183,3 +183,68 @@ def test_frontend_assets_are_cache_busted_and_not_cacheable(web):
     assert "static/app.js?v=" in response.text
     assert "static/style.css?v=" in response.text
     assert "no-cache" in response.headers["Cache-Control"]
+
+
+def test_native_add_discovered_persists_without_javascript(web, monkeypatch):
+    client, c, token = web
+    c.configure = Mock()
+    monkeypatch.setattr(
+        "manager.web.discover_addons",
+        lambda repository, branch, github_token: {
+            "repository": "justcop/home-assistant-addons",
+            "branch": "main",
+            "addons": [{
+                "id": "money_locations",
+                "name": "Money Locations",
+                "path": "money_locations",
+                "health_port": 0,
+            }],
+        },
+    )
+    response = client.post(
+        "/add-discovered",
+        data={
+            "_csrf": token,
+            "discovery_repository": "justcop/home-assistant-addons",
+            "discovery_branch": "main",
+            "discovered_path": "money_locations",
+            "discovered_health_port": "8123",
+        },
+        environ_base={"REMOTE_ADDR": "172.30.32.2"},
+    )
+    assert response.status_code == 302
+    assert "added=Money%20Locations" in response.headers["Location"]
+    rows = c.configure.call_args.args[0]
+    assert rows[-1] == {
+        "id": "money_locations",
+        "repository": "justcop/home-assistant-addons",
+        "branch": "main",
+        "path": "money_locations",
+        "enabled": True,
+        "update_on_start": True,
+        "health_port": 8123,
+        "health_path": "/",
+    }
+
+
+def test_native_add_discovered_rejects_stale_selection(web, monkeypatch):
+    client, c, token = web
+    c.configure = Mock()
+    monkeypatch.setattr(
+        "manager.web.discover_addons",
+        lambda *args: {"repository": "justcop/home-assistant-addons", "branch": "main", "addons": []},
+    )
+    response = client.post(
+        "/add-discovered",
+        data={
+            "_csrf": token,
+            "discovery_repository": "justcop/home-assistant-addons",
+            "discovery_branch": "main",
+            "discovered_path": "missing",
+            "discovered_health_port": "0",
+        },
+        environ_base={"REMOTE_ADDR": "172.30.32.2"},
+    )
+    assert response.status_code == 302
+    assert "add_error=" in response.headers["Location"]
+    assert not c.configure.called
