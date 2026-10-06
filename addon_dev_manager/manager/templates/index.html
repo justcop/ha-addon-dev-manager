@@ -6,8 +6,8 @@
   <meta name="csrf-token" content="{{ csrf }}">
   <meta name="app-base" content="{{ base }}">
   <title>Add-on Development Manager</title>
-  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.2.6">
-  <script src="{{ base }}/static/app.js?v=0.2.6" defer></script>
+  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.2.7">
+  <script src="{{ base }}/static/app.js?v=0.2.7" defer></script>
 </head>
 <body>
   <main>
@@ -19,6 +19,8 @@
       <div><h2>Your code. Ready to run.</h2><p>Deploy GitHub commits to local add-ons, select earlier versions and control them in one place.</p></div>
       <button id="update-all" class="primary">Update all enabled add-ons</button>
     </section>
+    {% if add_message %}<div class="notice success-notice" role="status">{{ add_message }} was added to Development Manager.</div>{% endif %}
+    {% if add_error %}<div class="notice" role="alert">{{ add_error }}</div>{% endif %}
     <div id="notice" class="notice" hidden role="alert"></div>
     <section class="operation" aria-label="Current operation">
       <div class="operation-heading"><span id="job-dot" class="dot"></span><strong id="job-phase">Connecting…</strong><span id="job-status" class="badge">Ready</span></div>
@@ -29,7 +31,8 @@
     <footer>Source is versioned with Git. Settings and application data stay with Home Assistant.<br>Definition changes still require a Supervisor repository refresh. Container builds may take a few minutes.</footer>
   </main>
   <dialog id="settings-dialog">
-    <form id="settings-form">
+    <form id="settings-form" method="post">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
       <div class="section-heading"><h2>Repositories & settings</h2><button type="button" id="close-settings" class="icon-button" aria-label="Close settings">×</button></div>
       <p class="muted">Pick an add-on from your repository and the manager will fill in the repository, branch, path and ID for you.</p>
       <section class="quick-add">
@@ -38,17 +41,20 @@
         </div>
         <div class="quick-picker">
           <label class="field">Add-on
-            <select id="discovered-addon" {% if not default_discovery.addons %}disabled{% endif %}>
+            <select id="discovered-addon" name="discovered_path" {% if not default_discovery.addons %}disabled{% endif %}>
               {% if default_discovery.addons %}
                 {% for addon in default_discovery.addons %}
-                  <option value="{{ loop.index0 }}">{{ addon.name }} · {{ addon.path }}</option>
+                  <option value="{{ addon.path }}">{{ addon.name }} · {{ addon.path }}</option>
                 {% endfor %}
               {% else %}
                 <option>No add-ons available</option>
               {% endif %}
             </select>
           </label>
-          <button type="button" id="add-discovered" class="primary" {% if not default_discovery.addons %}disabled{% endif %}>Add selected add-on</button>
+          <label class="field">Health port
+            <input id="discovered-health-port" name="discovered_health_port" type="number" min="0" max="65535" value="{% if default_discovery.addons %}{{ default_discovery.addons[0].health_port }}{% else %}0{% endif %}">
+          </label>
+          <button type="submit" id="add-discovered" class="primary" formaction="{{ base }}/add-discovered" formmethod="post" {% if not default_discovery.addons %}disabled{% endif %}>Add selected add-on</button>
         </div>
         <div id="add-result" class="add-result" hidden role="status"></div>
         <div id="discovery-summary" class="discovery-summary {% if default_discovery.error %}error{% else %}success{% endif %}">
@@ -62,8 +68,8 @@
         <details class="other-repo">
           <summary>Use a different repository</summary>
           <div class="quick-source">
-            <label class="field">Repository<input id="discover-repository" value="justcop/home-assistant-addons" placeholder="owner/repository"></label>
-            <label class="field">Branch<input id="discover-branch" value="main" placeholder="main"></label>
+            <label class="field">Repository<input id="discover-repository" name="discovery_repository" value="justcop/home-assistant-addons" placeholder="owner/repository"></label>
+            <label class="field">Branch<input id="discover-branch" name="discovery_branch" value="main" placeholder="main"></label>
             <button type="button" id="discover-addons" class="secondary">Load repository</button>
           </div>
         </details>
