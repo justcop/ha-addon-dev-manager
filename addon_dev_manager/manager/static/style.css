@@ -27,3 +27,9 @@
 
 .quick-add-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
 @media(max-width:760px){.quick-add-heading{display:block}.refresh-link{margin-top:10px}}
+
+.add-result{margin-top:10px;padding:10px 12px;border-radius:7px;font-size:12px;border:1px solid var(--line)}
+.add-result.success{color:#9ce8c8;background:#12352c;border-color:#315f4f}
+.add-result.warning{color:#ffd0a8;background:#382b1f;border-color:#755236}
+.add-result.error{color:#ffb8b8;background:#3a2020;border-color:#7d3d3d}
+.repo-row.just-added{outline:2px solid var(--accent);outline-offset:2px;box-shadow:0 0 0 6px #70e0b518}
