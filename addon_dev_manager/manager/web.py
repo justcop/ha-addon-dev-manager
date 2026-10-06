@@ -74,12 +74,13 @@ def create_app(controller, testing=False):
         # makes the common path work even if the browser-side discovery control
         # is unavailable for any reason.
         default_discovery = {"repository": "justcop/home-assistant-addons", "branch": "main", "addons": [], "error": ""}
-        try:
-            default_discovery.update(discover_addons(
-                default_discovery["repository"], default_discovery["branch"], controller.source.token
-            ))
-        except Exception as exc:
-            default_discovery["error"] = str(exc)
+        if not testing:
+            try:
+                default_discovery.update(discover_addons(
+                    default_discovery["repository"], default_discovery["branch"], controller.source.token
+                ))
+            except Exception as exc:
+                default_discovery["error"] = str(exc)
         return render_template("index.html", csrf=csrf, default_discovery=default_discovery,
                                base=request.headers.get("X-Ingress-Path", "").rstrip("/"))
 
