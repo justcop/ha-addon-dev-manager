@@ -4,6 +4,8 @@ const csrf = document.querySelector('meta[name="csrf-token"]').content;
 const $ = id => document.getElementById(id);
 let snapshot, cardSignature = "", historySignature = "", runtime = {}, refreshing = false;
 const versionsCache = new Map();
+const discoveryCache = new Map();
+let discoveredAddons = [];
 function element(tag, text, className) {const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(className)e.className=className;return e;}
 async function api(path, body) {
   const r=await fetch(base+"/api/"+path,{method:body===undefined?"GET":"POST",headers:body===undefined?{}:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:body===undefined?undefined:JSON.stringify(body)});
@@ -61,15 +63,81 @@ function render(){
   const hist=JSON.stringify(snapshot.history);if(hist!==historySignature){historySignature=hist;$("history").replaceChildren();for(const h of snapshot.history){const tr=element("tr");const version=element("td",h.source_version);version.title="Container definition: "+h.version;version.append(element("span",h.sha.slice(0,12),"code"));const status=element("td");status.append(element("span",h.status.replaceAll("_"," "),"badge "+h.status));if(h.message)status.title=h.message;tr.append(element("td",h.number),element("td",h.id),version,element("td",new Date(h.time).toLocaleString()),status);$("history").append(tr);}if(!snapshot.history.length){const td=element("td","Your first deployment will appear here.","muted");td.colSpan=5;const tr=element("tr");tr.append(td);$("history").append(tr);}}
 }
 async function refresh(){if(refreshing)return;refreshing=true;try{snapshot=await api("status");render();}catch(e){$("job-phase").textContent=e.message;$("job-dot").className="dot failed";}finally{refreshing=false;}}
-function addRow(t={id:"",repository:"",branch:"main",path:".",enabled:true,update_on_start:true,health_port:0,health_path:"/"}){
-  const row=element("div",undefined,"repo-row"),fields=element("div",undefined,"fields");
-  for(const [key,label,placeholder] of [["id","Unique ID","vinyl"],["repository","GitHub repository","justcop/home-assistant-addons"],["branch","Branch","main"],["path","Add-on subdirectory","vinyl_guardian"],["health_port","Optional HTTP health port","0 disables HTTP checks"],["health_path","HTTP health path","/"]]){
-    const l=element("label",label,"field"),input=element("input");input.name=key;input.value=t[key];input.placeholder=placeholder;input.required=true;if(key==="health_port"){input.type="number";input.min=0;input.max=65535;}if(key==="id")input.pattern="[a-z][a-z0-9_]{0,39}";l.append(input);fields.append(l);
+function addRow(t={id:"",repository:"",branch:"main",path:".",enabled:true,update_on_start:true,health_port:0,health_path:"/"}, compact=false){
+  const row=element("div",undefined,"repo-row");
+  const title=element("div",undefined,"repo-row-title");
+  const labelText=t.name||t.path?.split("/").filter(Boolean).pop()||t.id||"Manual entry";
+  const titleText=element("div");
+  titleText.append(element("strong",labelText),element("span",t.repository?(" · "+String(t.repository).replace("https://github.com/","").replace(/\.git$/,"")):"","muted"));
+  title.append(titleText);
+
+  const health=element("label","Health check port","field health-field");
+  const healthInput=element("input");
+  healthInput.name="health_port";healthInput.type="number";healthInput.min=0;healthInput.max=65535;healthInput.value=t.health_port??0;healthInput.required=true;
+  health.append(healthInput);
+  const healthHint=element("span","0 disables the HTTP health check.","hint-inline");
+  const top=element("div",undefined,"compact-row");
+  top.append(title,health,healthHint);
+  row.append(top);
+
+  const details=element("details",undefined,"advanced");
+  details.open=!compact;
+  const summary=element("summary","Advanced settings");
+  const fields=element("div",undefined,"fields");
+  for(const [key,label,placeholder] of [["id","Unique ID","vinyl"],["repository","GitHub repository","justcop/home-assistant-addons"],["branch","Branch","main"],["path","Add-on subdirectory","vinyl_guardian"],["health_path","HTTP health path","/"]]){
+    const l=element("label",label,"field"),input=element("input");input.name=key;input.value=t[key]??"";input.placeholder=placeholder;input.required=true;
+    if(key==="id")input.pattern="[a-z][a-z0-9_]{0,39}";
+    l.append(input);fields.append(l);
   }
-  row.append(fields);const footer=element("div",undefined,"row-footer");for(const [key,label]of [["enabled","Enabled"],["update_on_start","Update on manager startup"]]){const l=element("label",undefined,"check"),input=element("input");input.type="checkbox";input.name=key;input.checked=t[key];l.append(input,document.createTextNode(label));footer.append(l);}const remove=element("button","Remove entry","secondary");remove.type="button";remove.addEventListener("click",()=>row.remove());footer.append(remove);row.append(footer);$("repo-rows").append(row);
+  const footer=element("div",undefined,"row-footer");
+  for(const [key,label]of [["enabled","Enabled"],["update_on_start","Update on manager startup"]]){
+    const l=element("label",undefined,"check"),input=element("input");input.type="checkbox";input.name=key;input.checked=t[key]!==false;l.append(input,document.createTextNode(label));footer.append(l);
+  }
+  const remove=element("button","Remove entry","secondary");remove.type="button";remove.addEventListener("click",()=>row.remove());footer.append(remove);
+  details.append(summary,fields,footer);row.append(details);$("repo-rows").append(row);
 }
-$("configure").addEventListener("click",()=>{if(!snapshot)return;$("repo-rows").replaceChildren();for(const t of snapshot.targets)addRow(t);$("startup-toggle").checked=snapshot.settings.update_on_start;$("automatic-toggle").checked=snapshot.settings.automatic_updates;$("check-interval").value=snapshot.settings.check_interval;$("settings-error").hidden=true;$("settings-dialog").showModal();});
-$("close-settings").addEventListener("click",()=>$("settings-dialog").close());$("cancel-settings").addEventListener("click",()=>$("settings-dialog").close());$("add-repo").addEventListener("click",()=>addRow());
+
+function configuredIds(){
+  return new Set([...document.querySelectorAll('.repo-row input[name="id"]')].map(i=>i.value).filter(Boolean));
+}
+function discoveryKey(){return $("discover-repository").value.trim()+"@"+$("discover-branch").value.trim();}
+function renderDiscovery(result){
+  discoveredAddons=result.addons||[];
+  $("discover-repository").value=result.repository||$("discover-repository").value;
+  $("discover-branch").value=result.branch||$("discover-branch").value;
+  const select=$("discovered-addon");select.replaceChildren();
+  if(!discoveredAddons.length){
+    select.append(element("option","No add-ons found"));select.disabled=true;$("add-discovered").disabled=true;
+    $("discovery-summary").textContent="No folders containing both an add-on config and Dockerfile were found.";$("discovery-summary").hidden=false;return;
+  }
+  discoveredAddons.forEach((addon,index)=>{const option=element("option",addon.name+" · "+addon.path);option.value=String(index);select.append(option);});
+  select.disabled=false;$("add-discovered").disabled=false;
+  $("discovery-summary").textContent="Found "+discoveredAddons.length+" add-on"+(discoveredAddons.length===1?"":"s")+" in "+result.repository+".";$("discovery-summary").hidden=false;
+}
+async function discoverRepository(silent=false){
+  const repository=$("discover-repository").value.trim(),branch=$("discover-branch").value.trim();
+  if(!repository)return;
+  const key=repository+"@"+branch;
+  try{
+    $("discover-addons").disabled=true;$("discover-addons").textContent="Scanning…";
+    let result=discoveryCache.get(key);
+    if(!result){result=await api("discover",{repository,branch});discoveryCache.set(key,result);}
+    renderDiscovery(result);
+  }catch(e){
+    discoveredAddons=[];$("discovered-addon").replaceChildren(element("option","Unable to scan repository"));$("discovered-addon").disabled=true;$("add-discovered").disabled=true;
+    $("discovery-summary").textContent=e.message;$("discovery-summary").hidden=false;if(!silent)toast(e.message);
+  }finally{$("discover-addons").disabled=false;$("discover-addons").textContent="Scan repository";}
+}
+function addSelectedDiscovered(){
+  const addon=discoveredAddons[Number($("discovered-addon").value)];
+  if(!addon)return;
+  if(configuredIds().has(addon.id)){toast(addon.name+" is already configured.");return;}
+  addRow({...addon,enabled:true,update_on_start:true},true);
+  toast(addon.name+" added. Set the health port if it needs an HTTP check, then save settings.");
+}
+
+$("configure").addEventListener("click",()=>{if(!snapshot)return;$("repo-rows").replaceChildren();for(const t of snapshot.targets)addRow(t,true);$("startup-toggle").checked=snapshot.settings.update_on_start;$("automatic-toggle").checked=snapshot.settings.automatic_updates;$("check-interval").value=snapshot.settings.check_interval;$("settings-error").hidden=true;$("settings-dialog").showModal();discoverRepository(true);});
+$("close-settings").addEventListener("click",()=>$("settings-dialog").close());$("cancel-settings").addEventListener("click",()=>$("settings-dialog").close());$("add-repo").addEventListener("click",()=>addRow(undefined,false));$("discover-addons").addEventListener("click",()=>discoverRepository(false));$("add-discovered").addEventListener("click",addSelectedDiscovered);
 $("settings-form").addEventListener("submit",async e=>{e.preventDefault();const rows=[...document.querySelectorAll(".repo-row")].map(row=>Object.fromEntries([...row.querySelectorAll("input")].map(i=>[i.name,i.type==="checkbox"?i.checked:i.type==="number"?Number(i.value):i.value])));try{await api("settings",{repositories:rows,update_on_start:$("startup-toggle").checked,automatic_updates:$("automatic-toggle").checked,check_interval:Number($("check-interval").value)});$("settings-dialog").close();await refresh();toast("Settings saved to Home Assistant.");}catch(err){$("settings-error").textContent=err.message;$("settings-error").hidden=false;}});
 $("update-all").addEventListener("click",()=>perform("deploy_all"));
 refresh();setInterval(refresh,1500);async function updateRuntime(){try{runtime=await api("runtime");if(snapshot)render();}catch(e){/* The operation view reports connectivity separately. */}}updateRuntime();setInterval(updateRuntime,10000);
