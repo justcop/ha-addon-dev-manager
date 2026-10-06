@@ -1,3 +1,9 @@
+## Quick add from a repository
+
+Open **Repositories & settings**. The manager now scans `justcop/home-assistant-addons` by default and lists every directory containing a valid Home Assistant add-on configuration and Dockerfile. Select an add-on and choose **Add selected add-on**. The ID, repository, branch, path and standard options are filled automatically.
+
+The **health check port** remains visible because this is the setting most likely to need manual input. Use `0` when the add-on has no HTTP health endpoint. All other fields remain available under **Advanced settings**.
+
 ## Automatic updates
 
 Enabled by default, with a 60-second check interval. Set `automatic_updates: false` to disable scheduled and startup deployments. Manual updates remain available. Set `check_interval` to 15–86400 seconds. Polling checks all enabled entries regardless of their startup toggle. Busy operations delay checks; interrupted deployments pause them until recovery. Build and startup time is additional, with no guaranteed maximum. Web UI settings apply immediately; changes through Home Assistant Configuration require restarting the manager.
