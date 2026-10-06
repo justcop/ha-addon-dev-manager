@@ -1,5 +1,5 @@
 name: Add-on Development Manager
-version: "0.1.1"
+version: "0.2.0"
 slug: addon_dev_manager
 description: Deploy GitHub commits to local add-ons and manage their lifecycle.
 url: https://github.com/justcop/ha-addon-dev-manager
@@ -11,7 +11,7 @@ boot: auto
 init: false
 ingress: true
 ingress_port: 8099
-panel_icon: mdi:source-branch
+panel_icon: mdi:tools
 panel_title: Development Manager
 panel_admin: true
 hassio_api: true
