@@ -26,6 +26,4 @@
 .other-repo[open] summary{color:var(--text);margin-bottom:10px}
 
 .quick-add-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
-.refresh-link{display:inline-flex;align-items:center;text-decoration:none;padding:8px 12px;border:1px solid var(--line);border-radius:8px;color:var(--text);font-weight:650;white-space:nowrap}
-.refresh-link:hover{filter:brightness(1.15)}
 @media(max-width:760px){.quick-add-heading{display:block}.refresh-link{margin-top:10px}}
