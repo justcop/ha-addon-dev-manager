@@ -16,3 +16,7 @@
 .advanced{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
 .advanced summary{font-size:12px;color:var(--muted);cursor:pointer;margin-bottom:12px}
 .advanced[open] summary{color:var(--text)}
+
+.discovery-summary.scanning{color:var(--text)}
+.discovery-summary.success{color:#75d8ad}
+.discovery-summary.error{color:#ff9d9d;font-weight:600}
