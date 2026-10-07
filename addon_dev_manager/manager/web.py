@@ -203,8 +203,8 @@ def main():
     controller = Controller(data_dir, os.environ.get("DEV_MANAGER_ADDONS", "/addons"), options, Supervisor())
     app = create_app(controller)
     if controller.state["transactions"]:
-        controller.event("An interrupted deployment needs recovery. Open the controller before updating.")
-    elif options.get("automatic_updates", True) and options.get("update_on_start", True):
+        controller.event("One or more add-ons need recovery. Other add-ons remain available.")
+    if options.get("automatic_updates", True) and options.get("update_on_start", True):
         controller.submit("startup")
     controller.start_automatic_updates()
     serve(app, host="0.0.0.0", port=8099, threads=6)
