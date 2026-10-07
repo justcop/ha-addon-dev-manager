@@ -133,9 +133,6 @@ def discover_addons(repository, branch="", token=""):
                 suffix += 1
             used_ids.add(ident)
 
-            ingress_port = config.get("ingress_port", 0)
-            if type(ingress_port) is not int or not 0 <= ingress_port <= 65535:
-                ingress_port = 0
             addons.append({
                 "id": ident,
                 "name": name,
@@ -146,7 +143,7 @@ def discover_addons(repository, branch="", token=""):
                 "repository": full_name,
                 "branch": selected_branch,
                 "path": directory,
-                "health_port": ingress_port,
+                "health_port": 0,
                 "health_path": "/",
             })
 
