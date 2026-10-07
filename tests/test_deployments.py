@@ -297,13 +297,54 @@ def test_deployed_id_cannot_change_repository_or_path(deployment):
         c.configure([dict(row(), repository="other/repo")], True)
 
 
-def test_busy_controller_and_pending_transactions_block_changes(deployment):
+def test_busy_controller_blocks_changes(deployment):
     c, _, _, _, _, _ = deployment
     c.busy = True
     with pytest.raises(ValueError, match="already running"):
         c.submit("deploy_all")
-    with pytest.raises(ValueError, match="Finish or recover"):
+    with pytest.raises(ValueError, match="active operation"):
         c.configure([], True)
+
+
+def test_pending_recovery_does_not_block_settings_or_removal(deployment):
+    c, sup, t, first, _, _ = deployment
+    candidate = dict(
+        id=t["id"], repository=t["repository"], path=t["path"],
+        slug="local_demo", sha=first, version="1.0.0-dev."+first[:12],
+        source_version="1.0.0", tree="tree"
+    )
+    c.state["transactions"]["demo"] = {
+        "target": deepcopy(t), "candidate": candidate, "previous": None,
+        "installed": False, "was_started": False, "watchdog": False,
+        "phase": "starting", "time": "now"
+    }
+    c.configure([], True)
+    assert c.targets == []
+    assert "demo" in c.state["transactions"]
+    assert c.target("demo")["id"] == "demo"
+    assert sup.calls[-1][0] == "/addons/self/options"
+
+
+def test_pending_recovery_only_blocks_that_addon(deployment, monkeypatch):
+    c, _, t, _, _, _ = deployment
+    other = dict(t, id="other", path="other")
+    c.targets = [t, other]
+    c.state["transactions"]["demo"] = {
+        "target": deepcopy(t), "candidate": {"slug": "local_demo"},
+        "previous": None, "phase": "starting"
+    }
+    deployed = []
+    monkeypatch.setattr(c, "deploy_batch", lambda targets: deployed.extend(x["id"] for x in targets))
+    c._worker("deploy_all", None, None)
+    assert deployed == ["other"]
+    c.busy = False
+    with pytest.raises(ValueError, match="This add-on needs recovery"):
+        c.submit("check", "demo")
+    c.busy = False
+    c.submit = lambda action, ident=None, sha=None: deployed.append((action, ident))
+    c.next_auto_check = 0
+    assert c.automatic_tick(clock=1) is True
+    assert deployed[-1] == ("automatic", None)
 
 
 def test_startup_filters_entries_but_manual_update_all_does_not(deployment, monkeypatch):
