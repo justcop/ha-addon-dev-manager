@@ -534,16 +534,11 @@ def test_failure_of_one_addon_does_not_block_other_deployment(deployment, monkey
     assert sup.apps["local_other"]["state"] == "started"
 
 
-def test_recovery_uses_current_health_settings_or_supervisor_only_if_removed(deployment):
+def test_recovery_is_always_supervisor_only(deployment):
     c, _, t, _, _, _ = deployment
     stored = dict(t, health_port=8099, health_path="/health")
+    c.targets = [dict(t, health_port=8099, health_path="/health")]
 
-    c.targets = [dict(t, health_port=0, health_path="/")]
-    current = c.recovery_health_target(stored)
-    assert current["health_port"] == 0
-    assert current["health_path"] == "/"
-
-    c.targets = []
-    removed = c.recovery_health_target(stored)
-    assert removed["health_port"] == 0
-    assert removed["health_path"] == "/"
+    recovery = c.recovery_health_target(stored)
+    assert recovery["health_port"] == 0
+    assert recovery["health_path"] == "/"
