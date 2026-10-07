@@ -308,3 +308,25 @@ def test_git_discovery_finds_addons_without_github_api(monkeypatch):
         "health_path": "/",
     }]
     assert any(call[0] == "fetch" for call in calls)
+
+
+def test_health_accepts_ingress_only_http_403(deployment, monkeypatch):
+    import manager.controller as module
+
+    c = deployment[0]
+    target = row(health_port=8099, health_path="/health")
+    c.targets = [target]
+    c.options["health_timeout"] = 1
+    c.supervisor.info = Mock(return_value={"state": "started", "ip_address": "172.30.33.5"})
+
+    class FakeOpener:
+        def open(self, *args, **kwargs):
+            from urllib.error import HTTPError
+            raise HTTPError(args[0], 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr(module, "build_opener", lambda *args: FakeOpener())
+    ticks = iter([0, 0, 6])
+    monkeypatch.setattr(module.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(module.time, "sleep", lambda *_: None)
+
+    c.health(target, "local_demo")
