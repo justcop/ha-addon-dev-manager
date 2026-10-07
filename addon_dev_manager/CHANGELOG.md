@@ -1,3 +1,8 @@
+## 0.3.1
+- Recovery is isolated per add-on: one failed deployment no longer blocks unrelated updates or settings changes.
+- Failed add-ons can be removed from monitoring while their recovery journal is retained separately.
+- Automatic/startup batch updates skip only add-ons that need recovery.
+
 ## 0.2.0
 
 - Add repository scanning and a drop-down picker for add-ons.
