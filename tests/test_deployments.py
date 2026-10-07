@@ -400,7 +400,7 @@ def code_commit(c, upstream, source_version="1.0.0"):
 
 
 @pytest.mark.parametrize("source_version", ["1.0.0", "1.0.1"])
-def test_code_only_update_skips_all_repository_refreshes(deployment, source_version):
+def test_every_changed_commit_gets_unique_supervisor_version(deployment, source_version):
     c, sup, t, _, second, upstream = deployment
     c.deploy_batch([t], second)
     original_container_version = sup.apps["local_demo"]["version"]
@@ -408,9 +408,12 @@ def test_code_only_update_skips_all_repository_refreshes(deployment, source_vers
     sup.calls.clear()
     c.deploy_batch([t], third)
     paths = [p for p, _ in sup.calls]
-    assert "/store/reload" not in paths
-    assert "/addons/local_demo/rebuild" in paths
-    assert sup.apps["local_demo"]["version"] == original_container_version
+    assert "/store/reload" in paths
+    assert "/store/addons/local_demo/update" in paths
+    assert "/addons/local_demo/rebuild" not in paths
+    assert sup.apps["local_demo"]["version"] == source_version + "-dev." + third[:12]
+    assert sup.apps["local_demo"]["version"] != original_container_version
+    assert c.state["current"]["demo"]["version"] == source_version + "-dev." + third[:12]
     assert c.state["current"]["demo"]["source_version"] == source_version
     assert c.state["current"]["demo"]["sha"] == third
     assert "third" in (c.addons_dir / "devmgr_demo/run.sh").read_text()
@@ -542,3 +545,33 @@ def test_recovery_is_always_supervisor_only(deployment):
     recovery = c.recovery_health_target(stored)
     assert recovery["health_port"] == 0
     assert recovery["health_path"] == "/"
+
+
+def test_latest_sha_with_stale_container_version_is_repaired(deployment):
+    c, sup, target, first, second, _ = deployment
+    c.deploy_batch([target], second)
+
+    # Recreate the legacy state produced by the old code-only optimisation:
+    # source SHA/version advanced, but Supervisor/container version remained
+    # tied to an earlier commit.
+    stale_version = "1.0.0-dev." + first[:12]
+    c.state["current"]["demo"]["version"] = stale_version
+    c.state["current"]["demo"]["source_version"] = "1.0.0"
+    (c.addons_dir / "devmgr_demo" / MARKER).write_text(json.dumps(c.state["current"]["demo"]))
+    cfg_path = c.addons_dir / "devmgr_demo" / "config.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text())
+    cfg["version"] = stale_version
+    cfg_path.write_text(yaml.safe_dump(cfg))
+    sup.definitions["local_demo"]["version"] = stale_version
+    sup.apps["local_demo"]["version"] = stale_version
+
+    sup.calls.clear()
+    c.deploy_batch([target], second)
+
+    expected = "1.0.0-dev." + second[:12]
+    assert c.state["current"]["demo"]["sha"] == second
+    assert c.state["current"]["demo"]["version"] == expected
+    assert sup.apps["local_demo"]["version"] == expected
+    paths = [p for p, _ in sup.calls]
+    assert "/store/reload" in paths
+    assert "/store/addons/local_demo/update" in paths
