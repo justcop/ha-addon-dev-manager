@@ -1,3 +1,9 @@
+## 0.3.2
+- Supervisor-only health is now the default; repository discovery no longer mistakes ingress ports for health-check ports.
+- Recovery always uses Supervisor state and cannot be trapped by an optional HTTP health probe.
+- Update-all isolates preflight and deployment failures per add-on, so one broken app no longer blocks valid updates.
+- Known failures leave recovery state only on the affected add-on; unrelated deployments continue.
+
 ## 0.3.1
 - Recovery is isolated per add-on: one failed deployment no longer blocks unrelated updates or settings changes.
 - Failed add-ons can be removed from monitoring while their recovery journal is retained separately.
