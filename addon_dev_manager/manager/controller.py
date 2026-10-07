@@ -395,49 +395,59 @@ class Controller:
             return
 
         prepared = []
+        failures = []
         with tempfile.TemporaryDirectory(dir=self.data_dir, prefix="stage-") as temporary:
             installed = self.supervisor.installed()
             used_slugs = set()
 
-            # Preflight all eligible targets before mutating any of them.
+            # Preflight every target before mutating any of them, but isolate
+            # preflight failures so one bad repository does not block the rest.
             for target in targets:
-                self.assert_owned(target, self.state["current"].get(target["id"]))
-                self.event("Checking " + target["id"])
-                sha = requested_sha or self.source.fetch(target)
-                current = self.state["current"].get(target["id"])
-                if current and current["slug"] in installed and installed[current["slug"]].get("version") == current["version"]:
-                    if current["sha"] == sha:
-                        self.event(target["id"] + " is already at " + sha[:12])
-                        continue
-                    if current.get("tree") == self.source.tree_hash(target, sha):
-                        self.event(target["id"] + " source is unchanged at " + sha[:12])
-                        continue
+                try:
+                    self.assert_owned(target, self.state["current"].get(target["id"]))
+                    self.event("Checking " + target["id"])
+                    sha = requested_sha or self.source.fetch(target)
+                    current = self.state["current"].get(target["id"])
+                    if current and current["slug"] in installed and installed[current["slug"]].get("version") == current["version"]:
+                        if current["sha"] == sha:
+                            self.event(target["id"] + " is already at " + sha[:12])
+                            continue
+                        if current.get("tree") == self.source.tree_hash(target, sha):
+                            self.event(target["id"] + " source is unchanged at " + sha[:12])
+                            continue
 
-                staging = Path(temporary) / target["id"]
-                candidate = self.source.stage(target, sha, staging)
-                slug = candidate["slug"]
-                if current and current["slug"] != slug:
-                    raise ValueError("An add-on cannot change slug under a deployed ID")
-                if slug in used_slugs or any(c["slug"] == slug and ident != target["id"]
-                                            for ident, c in self.state["current"].items()):
-                    raise ValueError("Two configured entries refer to the same local add-on slug")
-                used_slugs.add(slug)
-                if slug in installed and not current:
-                    raise ValueError("A local add-on with this slug already exists and is not managed by this controller")
-                conflicts = [s for s in installed if s != slug and s.endswith("_" + slug.removeprefix("local_"))]
-                if any(self.supervisor.info(s).get("state") != "stopped" for s in conflicts):
-                    raise ValueError("Stop the existing repository-installed add-on before its first local deployment")
+                    staging = Path(temporary) / target["id"]
+                    candidate = self.source.stage(target, sha, staging)
+                    slug = candidate["slug"]
+                    if current and current["slug"] != slug:
+                        raise ValueError("An add-on cannot change slug under a deployed ID")
+                    if slug in used_slugs or any(c["slug"] == slug and ident != target["id"]
+                                                for ident, c in self.state["current"].items()):
+                        raise ValueError("Two configured entries refer to the same local add-on slug")
+                    used_slugs.add(slug)
+                    if slug in installed and not current:
+                        raise ValueError("A local add-on with this slug already exists and is not managed by this controller")
+                    conflicts = [s for s in installed if s != slug and s.endswith("_" + slug.removeprefix("local_"))]
+                    if any(self.supervisor.info(s).get("state") != "stopped" for s in conflicts):
+                        raise ValueError("Stop the existing repository-installed add-on before its first local deployment")
 
-                needs_reload = self._prepare_definition(target, staging, candidate, current)
-                needs_reload = (needs_reload or slug not in installed
-                                or installed[slug].get("version") != candidate["version"])
-                prepared.append((target, staging, candidate, needs_reload))
+                    needs_reload = self._prepare_definition(target, staging, candidate, current)
+                    needs_reload = (needs_reload or slug not in installed
+                                    or installed[slug].get("version") != candidate["version"])
+                    prepared.append((target, staging, candidate, needs_reload))
+                except Exception as exc:
+                    failures.append((target["id"], str(exc)))
+                    self.event("Skipping " + target["id"] + ": " + str(exc))
 
             if not prepared:
+                if failures:
+                    failed = ", ".join(ident for ident, _ in failures)
+                    raise SupervisorError("Some add-ons could not be prepared: " + failed)
                 self.event("No new commits to deploy")
                 return
 
-            failures = []
+            # Mutate each add-on as its own transaction. A known failure leaves
+            # only that add-on in recovery and the batch continues.
             for target, staging, candidate, needs_reload in prepared:
                 tx = None
                 try:
@@ -466,14 +476,14 @@ class Controller:
                         self.record(target, candidate, "needs_recovery", str(exc))
                     failures.append((target["id"], str(exc)))
                     self.event(target["id"] + " needs recovery: " + str(exc))
-                    # If Supervisor may still be mutating globally, do not start
-                    # another deployment until its job state is known.
+                    # A transport loss during a Supervisor mutation may mean a
+                    # global build/reload is still running. Do not race that.
                     if isinstance(exc, UncertainMutation):
                         break
 
             if failures:
-                failed = ", ".join(ident for ident, _ in failures)
-                raise SupervisorError("Some add-ons failed and need recovery: " + failed)
+                failed = ", ".join(dict.fromkeys(ident for ident, _ in failures))
+                raise SupervisorError("Some add-ons failed while others remained independent: " + failed)
 
     def recover(self, target):
         tx = self.state["transactions"].get(target["id"])
