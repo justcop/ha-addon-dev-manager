@@ -87,6 +87,9 @@ class Controller:
         for t in self.targets:
             if t["id"] == ident:
                 return deepcopy(t)
+        tx = self.state["transactions"].get(ident)
+        if tx:
+            return deepcopy(tx["target"])
         raise ValueError("Unknown configured add-on")
 
     def snapshot(self):
@@ -103,8 +106,8 @@ class Controller:
 
     def configure(self, rows, update_on_start, automatic_updates=None, check_interval=None):
         with self.lock:
-            if self.busy or self.state["transactions"]:
-                raise ValueError("Finish or recover the active deployment before changing repositories")
+            if self.busy:
+                raise ValueError("Finish the active operation before changing repositories")
             options = deepcopy(self.options)
             options.update(repositories=rows, update_on_start=update_on_start)
             if automatic_updates is not None:
@@ -127,10 +130,10 @@ class Controller:
         clock = time.monotonic() if clock is None else clock
         with self.lock:
             if (not self.options.get("automatic_updates", True) or self.busy
-                    or self.state["transactions"] or clock < self.next_auto_check):
+                    or clock < self.next_auto_check):
                 return False
             self.next_auto_check = clock + self.options.get("check_interval", 60)
-            if not any(t["enabled"] for t in self.targets):
+            if not any(t["enabled"] and t["id"] not in self.state["transactions"] for t in self.targets):
                 return False
             self.submit("automatic")
             return True
@@ -153,8 +156,8 @@ class Controller:
                 raise ValueError("Unknown action")
             if action not in ("deploy_all", "automatic", "startup"):
                 self.target(ident)
-            if self.state["transactions"] and action not in ("recover", "rollback"):
-                raise ValueError("Recover interrupted deployments before performing other operations")
+            if ident in self.state["transactions"] and action not in ("recover", "rollback"):
+                raise ValueError("This add-on needs recovery before another operation can run on it")
             self.busy = True
             self.job = dict(status="running", phase="Starting", action=action, started=now(), events=[])
         threading.Thread(target=self._worker, args=(action, ident, sha), daemon=True).start()
@@ -163,6 +166,7 @@ class Controller:
         try:
             if action in ("deploy_all", "automatic", "startup"):
                 self.deploy_batch([t for t in self.targets if t["enabled"]
+                                   and t["id"] not in self.state["transactions"]
                                    and (action != "startup" or t["update_on_start"])])
             elif action == "deploy":
                 self.deploy_batch([self.target(ident)], sha)
@@ -366,8 +370,10 @@ class Controller:
             self.record(target, candidate, "success")
 
     def deploy_batch(self, targets, requested_sha=None):
-        if self.state["transactions"]:
-            raise ValueError("Recover interrupted deployments first")
+        blocked = [t["id"] for t in targets if t["id"] in self.state["transactions"]]
+        if blocked:
+            targets = [t for t in targets if t["id"] not in self.state["transactions"]]
+            self.event("Skipping add-ons that need recovery: " + ", ".join(blocked))
         if not targets:
             self.event("No enabled repositories configured")
             return
