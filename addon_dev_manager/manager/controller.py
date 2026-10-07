@@ -10,7 +10,7 @@ import shutil
 import tempfile
 import threading
 import time
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import urlopen, build_opener, ProxyHandler, HTTPRedirectHandler
 import ipaddress
 
@@ -338,7 +338,14 @@ class Controller:
                 address = f"http://{ip}:{target['health_port']}{target['health_path']}"
                 try:
                     with opener.open(address, timeout=3) as response:
-                        healthy = 200 <= response.status < 300
+                        # For startup health we only need proof that the HTTP
+                        # service is alive. Ingress-only add-ons commonly reject
+                        # direct container traffic with 401/403/404 even though
+                        # they are fully started. Treat client errors as alive;
+                        # only 5xx responses indicate an unhealthy application.
+                        healthy = response.status < 500
+                except HTTPError as exc:
+                    healthy = exc.code < 500
                 except (URLError, OSError):
                     healthy = False
             if healthy:
