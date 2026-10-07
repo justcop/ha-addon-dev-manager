@@ -302,38 +302,14 @@ class Controller:
             raise SupervisorError("Existing add-on settings are incompatible with the selected version. Check Home Assistant configuration before recovery.")
 
     def _prepare_definition(self, target, staging, candidate, current):
-        """Keep an unchanged installed definition so code-only rebuilds need no reload."""
-        if not current:
-            return True
-        directory = self.addons_dir / ("devmgr_" + target["id"])
-        old_configs = [directory / n for n in CONFIG_NAMES if (directory / n).is_file()]
-        new_configs = [staging / n for n in CONFIG_NAMES if (staging / n).is_file()]
-        if len(old_configs) != 1 or len(new_configs) != 1 or old_configs[0].name != new_configs[0].name:
-            return True
-        old, new = yaml.safe_load(old_configs[0].read_text()), yaml.safe_load(new_configs[0].read_text())
-        old.pop("version", None)
-        new.pop("version", None)
-        if old != new:
-            return True
-        # These files influence store metadata or build configuration, beyond
-        # code copied by Docker. Asset additions/removals also invalidate caches.
-        for filename in ("build.yaml", "build.yml", "build.json", "apparmor.txt"):
-            a, b = directory / filename, staging / filename
-            if (a.read_bytes() if a.is_file() else None) != (b.read_bytes() if b.is_file() else None):
-                return True
-        def translations(path):
-            return {str(p.relative_to(path)): p.read_bytes() for p in (path / "translations").rglob("*") if p.is_file()}
-        if translations(directory) != translations(staging):
-            return True
-        for filename in ("icon.png", "logo.png", "DOCS.md", "CHANGELOG.md", "README.md"):
-            if (directory / filename).is_file() != (staging / filename).is_file():
-                return True
-        new["version"] = current["version"]
-        cfg_path = new_configs[0]
-        cfg_path.write_text(json.dumps(new, indent=2) if cfg_path.suffix == ".json" else yaml.safe_dump(new, sort_keys=False))
-        candidate["version"] = current["version"]
-        (staging / MARKER).write_text(json.dumps(candidate))
-        return False
+        """Every deployed commit has a distinct Supervisor version.
+
+        Earlier releases reused the prior container version for code-only changes.
+        That allowed Git state to advance while Home Assistant still reported the
+        old installed version. A new commit must therefore refresh the local
+        definition so Supervisor can install its unique -dev.<sha> version.
+        """
+        return True
 
     def health(self, target, slug):
         """Require Supervisor started; optionally add an explicit HTTP readiness probe."""
@@ -402,10 +378,16 @@ class Controller:
                     sha = requested_sha or self.source.fetch(target)
                     current = self.state["current"].get(target["id"])
                     if current and current["slug"] in installed and installed[current["slug"]].get("version") == current["version"]:
-                        if current["sha"] == sha:
+                        expected_version = str(current.get("source_version", "")) + "-dev." + sha[:12]
+                        if current["sha"] == sha and current["version"] == expected_version:
                             self.event(target["id"] + " is already at " + sha[:12])
                             continue
-                        if current.get("tree") == self.source.tree_hash(target, sha):
+                        if current["sha"] == sha and current["version"] != expected_version:
+                            self.event(target["id"] + " has stale container version " + current["version"]
+                                       + "; repairing to " + expected_version)
+                        elif current.get("tree") == self.source.tree_hash(target, sha):
+                            # A commit elsewhere in a shared repository does not
+                            # change this add-on and therefore needs no rebuild.
                             self.event(target["id"] + " source is unchanged at " + sha[:12])
                             continue
 
