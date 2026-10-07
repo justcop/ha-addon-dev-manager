@@ -93,11 +93,11 @@ function addRow(t={id:"",repository:"",branch:"main",path:".",enabled:true,updat
   titleText.append(element("strong",labelText),element("span",t.repository?(" · "+String(t.repository).replace("https://github.com/","").replace(/\.git$/,"")):"","muted"));
   title.append(titleText);
 
-  const health=element("label","Health check port","field health-field");
+  const health=element("label","Optional HTTP health port","field health-field");
   const healthInput=element("input");
   healthInput.name="health_port";healthInput.type="number";healthInput.min=0;healthInput.max=65535;healthInput.value=t.health_port??0;healthInput.required=true;
   health.append(healthInput);
-  const healthHint=element("span","0 disables the HTTP health check.","hint-inline");
+  const healthHint=element("span","0 = Supervisor-only health (recommended).","hint-inline");
   const top=element("div",undefined,"compact-row");
   top.append(title,health,healthHint);
   row.append(top);
