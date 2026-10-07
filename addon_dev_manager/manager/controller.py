@@ -392,7 +392,6 @@ class Controller:
         failures = []
         with tempfile.TemporaryDirectory(dir=self.data_dir, prefix="stage-") as temporary:
             installed = self.supervisor.installed()
-            used_slugs = set()
 
             # Preflight every target before mutating any of them, but isolate
             # preflight failures so one bad repository does not block the rest.
@@ -415,10 +414,9 @@ class Controller:
                     slug = candidate["slug"]
                     if current and current["slug"] != slug:
                         raise ValueError("An add-on cannot change slug under a deployed ID")
-                    if slug in used_slugs or any(c["slug"] == slug and ident != target["id"]
-                                                for ident, c in self.state["current"].items()):
+                    if any(c["slug"] == slug and ident != target["id"]
+                           for ident, c in self.state["current"].items()):
                         raise ValueError("Two configured entries refer to the same local add-on slug")
-                    used_slugs.add(slug)
                     if slug in installed and not current:
                         raise ValueError("A local add-on with this slug already exists and is not managed by this controller")
                     conflicts = [s for s in installed if s != slug and s.endswith("_" + slug.removeprefix("local_"))]
@@ -430,11 +428,20 @@ class Controller:
                                     or installed[slug].get("version") != candidate["version"])
                     prepared.append((target, staging, candidate, needs_reload))
                 except Exception as exc:
-                    failures.append((target["id"], str(exc)))
+                    failures.append((target["id"], exc))
                     self.event("Skipping " + target["id"] + ": " + str(exc))
+
+            slug_ids = {}
+            for target, _staging, candidate, _needs_reload in prepared:
+                slug_ids.setdefault(candidate["slug"], []).append(target["id"])
+            duplicates = [ids for ids in slug_ids.values() if len(ids) > 1]
+            if duplicates:
+                raise ValueError("Two configured entries refer to the same local add-on slug")
 
             if not prepared:
                 if failures:
+                    if len(targets) == 1:
+                        raise failures[0][1]
                     failed = ", ".join(ident for ident, _ in failures)
                     raise SupervisorError("Some add-ons could not be prepared: " + failed)
                 self.event("No new commits to deploy")
@@ -468,7 +475,7 @@ class Controller:
                 except Exception as exc:
                     if tx and target["id"] in self.state["transactions"]:
                         self.record(target, candidate, "needs_recovery", str(exc))
-                    failures.append((target["id"], str(exc)))
+                    failures.append((target["id"], exc))
                     self.event(target["id"] + " needs recovery: " + str(exc))
                     # A transport loss during a Supervisor mutation may mean a
                     # global build/reload is still running. Do not race that.
@@ -476,6 +483,8 @@ class Controller:
                         break
 
             if failures:
+                if len(targets) == 1:
+                    raise failures[0][1]
                 failed = ", ".join(dict.fromkeys(ident for ident, _ in failures))
                 raise SupervisorError("Some add-ons failed while others remained independent: " + failed)
 
