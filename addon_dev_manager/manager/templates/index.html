@@ -6,8 +6,8 @@
   <meta name="csrf-token" content="{{ csrf }}">
   <meta name="app-base" content="{{ base }}">
   <title>Add-on Development Manager</title>
-  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.3.1">
-  <script src="{{ base }}/static/app.js?v=0.3.1" defer></script>
+  <link rel="stylesheet" href="{{ base }}/static/style.css?v=0.3.2">
+  <script src="{{ base }}/static/app.js?v=0.3.2" defer></script>
 </head>
 <body>
   <main>
@@ -52,7 +52,7 @@
               {% endif %}
             </select>
           </label>
-          <label class="field">Health port
+          <label class="field">Optional HTTP health port
             <input id="discovered-health-port" name="discovered_health_port" type="number" min="0" max="65535" value="{% if default_discovery.addons %}{{ default_discovery.addons[0].health_port }}{% else %}0{% endif %}">
           </label>
           <button type="submit" id="add-discovered" class="primary" {% if not default_discovery.addons %}disabled{% endif %}>Add selected add-on</button>
