@@ -27,8 +27,11 @@ async function perform(action, id, sha) {
 function renderCards() {
   const signature=JSON.stringify([snapshot.targets,snapshot.current,snapshot.transactions,runtime]);
   if(signature===cardSignature)return;cardSignature=signature;
-  $("cards").replaceChildren();$("count").textContent=snapshot.targets.length+" configured";
-  if(!snapshot.targets.length){const empty=element("div",undefined,"empty");empty.append(element("h3","Add your first repository"),element("p","Choose a GitHub repository, branch and add-on subdirectory in Repositories & settings."));$("cards").append(empty);return;}
+  $("cards").replaceChildren();
+  const configuredIds=new Set(snapshot.targets.map(t=>t.id));
+  const orphanTransactions=Object.entries(snapshot.transactions).filter(([id])=>!configuredIds.has(id));
+  $("count").textContent=snapshot.targets.length+" configured"+(orphanTransactions.length?" · "+orphanTransactions.length+" recovery item"+(orphanTransactions.length===1?"":"s"):"");
+  if(!snapshot.targets.length&&!orphanTransactions.length){const empty=element("div",undefined,"empty");empty.append(element("h3","Add your first repository"),element("p","Choose a GitHub repository, branch and add-on subdirectory in Repositories & settings."));$("cards").append(empty);return;}
   for(const t of snapshot.targets){
     const current=snapshot.current[t.id], tx=snapshot.transactions[t.id], live=current?runtime[current.slug]:undefined;
     const card=element("article",undefined,"card"),head=element("div",undefined,"card-head");
@@ -51,6 +54,20 @@ function renderCards() {
     }
     card.append(actions);if(versionsCache.has(t.id))showVersions(card,t);$("cards").append(card);
   }
+  for(const [id,tx] of orphanTransactions){
+    const t=tx.target||{id,repository:"",path:""};
+    const card=element("article",undefined,"card");
+    const head=element("div",undefined,"card-head");
+    head.append(element("h3",tx.candidate?.name||id),element("span","Needs recovery","badge needs_recovery"));
+    card.append(head);
+    if(t.repository)card.append(element("p",String(t.repository).replace("https://github.com/","").replace(/\.git$/,""),"repo"));
+    card.append(element("p","This add-on is no longer monitored, but an interrupted deployment journal is being retained for safe recovery.","recovery-help"));
+    if(tx.phase)card.append(element("p","Interrupted at: "+tx.phase,"hint"));
+    const actions=element("div",undefined,"card-actions");
+    actions.append(button("Recover",()=>perform("recover",id),"primary"));
+    card.append(actions);
+    $("cards").append(card);
+  }
 }
 function showVersions(card,t){
   card.querySelector(".versions")?.remove();const rows=versionsCache.get(t.id)||[];
@@ -63,9 +80,8 @@ function showVersions(card,t){
 function render(){
   renderCards();const j=snapshot.job;$("job-phase").textContent=j.phase;$("job-status").textContent=j.status;$("job-status").className="badge "+j.status;$("job-dot").className="dot "+j.status;
   $("events").replaceChildren(...j.events.map(e=>{const li=element("li");li.append(element("time",new Date(e.time).toLocaleTimeString()),document.createTextNode(e.message));return li;}));
-  const pending=Object.keys(snapshot.transactions).length;$("notice").hidden=!pending;$("notice").textContent=pending+" deployment(s) need recovery. Automatic updates are paused until they are recovered.";
+  const pending=Object.keys(snapshot.transactions).length;$("notice").hidden=!pending;$("notice").textContent=pending+" add-on"+(pending===1?"":"s")+" need recovery. Only those add-ons are blocked; other updates and settings remain available.";
   for(const b of document.querySelectorAll('[data-operation="true"],#update-all,#configure'))b.disabled=snapshot.busy;
-  if(pending)$("update-all").disabled=true;
   const hist=JSON.stringify(snapshot.history);if(hist!==historySignature){historySignature=hist;$("history").replaceChildren();for(const h of snapshot.history){const tr=element("tr");const version=element("td",h.source_version);version.title="Container definition: "+h.version;version.append(element("span",h.sha.slice(0,12),"code"));const status=element("td");status.append(element("span",h.status.replaceAll("_"," "),"badge "+h.status));if(h.message)status.title=h.message;tr.append(element("td",h.number),element("td",h.id),version,element("td",new Date(h.time).toLocaleString()),status);$("history").append(tr);}if(!snapshot.history.length){const td=element("td","Your first deployment will appear here.","muted");td.colSpan=5;const tr=element("tr");tr.append(td);$("history").append(tr);}}
 }
 async function refresh(){if(refreshing)return;refreshing=true;try{snapshot=await api("status");render();}catch(e){$("job-phase").textContent=e.message;$("job-dot").className="dot failed";}finally{refreshing=false;}}
