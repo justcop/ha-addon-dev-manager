@@ -329,7 +329,7 @@ def test_health_accepts_ingress_only_http_403(deployment, monkeypatch):
     monkeypatch.setattr(module.time, "monotonic", lambda: next(ticks))
     monkeypatch.setattr(module.time, "sleep", lambda *_: None)
 
-    c.health(target, "local_demo")
+    module.Controller.health(c, target, "local_demo")
 
 
 def test_health_port_zero_uses_supervisor_state_only(deployment, monkeypatch):
