@@ -314,7 +314,7 @@ def test_health_accepts_ingress_only_http_403(deployment, monkeypatch):
     import manager.controller as module
 
     c = deployment[0]
-    target = row(health_port=8099, health_path="/health")
+    target = dict(row(), health_port=8099, health_path="/health")
     c.targets = [target]
     c.options["health_timeout"] = 1
     c.supervisor.info = Mock(return_value={"state": "started", "ip_address": "172.30.33.5"})
@@ -336,7 +336,7 @@ def test_health_port_zero_uses_supervisor_state_only(deployment, monkeypatch):
     import manager.controller as module
 
     c = deployment[0]
-    target = row(health_port=0, health_path="/")
+    target = dict(row(), health_port=0, health_path="/")
     c.options["health_timeout"] = 10
     c.supervisor.info = Mock(return_value={"state": "started", "ip_address": "172.30.33.5"})
 
