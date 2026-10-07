@@ -93,13 +93,7 @@ class Controller:
         raise ValueError("Unknown configured add-on")
 
     def recovery_health_target(self, stored_target):
-        """Use current health settings; removed targets recover via Supervisor only."""
-        for target in self.targets:
-            if target["id"] == stored_target["id"]:
-                health_target = deepcopy(stored_target)
-                health_target["health_port"] = target.get("health_port", 0)
-                health_target["health_path"] = target.get("health_path", "/")
-                return health_target
+        """Recovery is complete when Supervisor confirms the container is started."""
         health_target = deepcopy(stored_target)
         health_target["health_port"] = 0
         health_target["health_path"] = "/"
