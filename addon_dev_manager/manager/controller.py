@@ -92,6 +92,19 @@ class Controller:
             return deepcopy(tx["target"])
         raise ValueError("Unknown configured add-on")
 
+    def recovery_health_target(self, stored_target):
+        """Use current health settings; removed targets recover via Supervisor only."""
+        for target in self.targets:
+            if target["id"] == stored_target["id"]:
+                health_target = deepcopy(stored_target)
+                health_target["health_port"] = target.get("health_port", 0)
+                health_target["health_path"] = target.get("health_path", "/")
+                return health_target
+        health_target = deepcopy(stored_target)
+        health_target["health_port"] = 0
+        health_target["health_path"] = "/"
+        return health_target
+
     def snapshot(self):
         with self.lock:
             return dict(targets=deepcopy(self.targets), current=deepcopy(self.state["current"]),
@@ -329,6 +342,7 @@ class Controller:
         return False
 
     def health(self, target, slug):
+        """Require Supervisor started; optionally add an explicit HTTP readiness probe."""
         timeout = self.options.get("health_timeout", 120)
         deadline = time.monotonic() + timeout
         stable_since = None
@@ -370,18 +384,22 @@ class Controller:
             self.record(target, candidate, "success")
 
     def deploy_batch(self, targets, requested_sha=None):
+        # Recovery is per add-on. A broken target must never prevent unrelated
+        # targets from checking or deploying.
         blocked = [t["id"] for t in targets if t["id"] in self.state["transactions"]]
         if blocked:
             targets = [t for t in targets if t["id"] not in self.state["transactions"]]
             self.event("Skipping add-ons that need recovery: " + ", ".join(blocked))
         if not targets:
-            self.event("No enabled repositories configured")
+            self.event("No eligible add-ons to deploy")
             return
+
         prepared = []
         with tempfile.TemporaryDirectory(dir=self.data_dir, prefix="stage-") as temporary:
             installed = self.supervisor.installed()
             used_slugs = set()
-            # Complete every download and preflight before stopping any application.
+
+            # Preflight all eligible targets before mutating any of them.
             for target in targets:
                 self.assert_owned(target, self.state["current"].get(target["id"]))
                 self.event("Checking " + target["id"])
@@ -394,6 +412,7 @@ class Controller:
                     if current.get("tree") == self.source.tree_hash(target, sha):
                         self.event(target["id"] + " source is unchanged at " + sha[:12])
                         continue
+
                 staging = Path(temporary) / target["id"]
                 candidate = self.source.stage(target, sha, staging)
                 slug = candidate["slug"]
@@ -405,34 +424,35 @@ class Controller:
                 used_slugs.add(slug)
                 if slug in installed and not current:
                     raise ValueError("A local add-on with this slug already exists and is not managed by this controller")
-                # Existing repository versions can collide through hardware or ports.
                 conflicts = [s for s in installed if s != slug and s.endswith("_" + slug.removeprefix("local_"))]
                 if any(self.supervisor.info(s).get("state") != "stopped" for s in conflicts):
                     raise ValueError("Stop the existing repository-installed add-on before its first local deployment")
+
                 needs_reload = self._prepare_definition(target, staging, candidate, current)
-                # A missing installation must be rediscovered, even with an
-                # otherwise unchanged manifest.
                 needs_reload = (needs_reload or slug not in installed
                                 or installed[slug].get("version") != candidate["version"])
                 prepared.append((target, staging, candidate, needs_reload))
+
             if not prepared:
                 self.event("No new commits to deploy")
                 return
-            active = []
-            try:
-                for target, staging, candidate, needs_reload in prepared:
+
+            failures = []
+            for target, staging, candidate, needs_reload in prepared:
+                tx = None
+                try:
                     tx = self._journal(target, candidate, candidate["slug"] in installed)
-                    active.append((target, candidate, tx))
                     self._stop(target, tx)
                     self.phase(target, "publishing")
                     self._publish(target, staging)
                     self.phase(target, "published")
-                if any(needs_reload for _, _, _, needs_reload in prepared):
-                    self.event("Refreshing Supervisor definitions once for this batch")
-                    self.supervisor.post("/store/reload", {})
-                else:
-                    self.event("Definitions unchanged. Skipping repository refresh.")
-                for target, candidate, tx in active:
+
+                    if needs_reload:
+                        self.event("Refreshing Supervisor definition for " + target["id"])
+                        self.supervisor.post("/store/reload", {})
+                    else:
+                        self.event("Definition unchanged for " + target["id"] + ". Skipping repository refresh.")
+
                     self.phase(target, "building")
                     self.event("Building " + target["id"] + " at " + candidate["sha"][:12])
                     self._build(candidate)
@@ -441,13 +461,19 @@ class Controller:
                     self.health(target, candidate["slug"])
                     self._finish(target, candidate, tx)
                     self.event("Deployed " + target["id"])
-            except Exception as exc:
-                # Durable journals deliberately survive. Blind rollback after a
-                # timeout could race Supervisor, or reverse a database migration.
-                for target, candidate, _tx in active:
-                    if target["id"] in self.state["transactions"]:
+                except Exception as exc:
+                    if tx and target["id"] in self.state["transactions"]:
                         self.record(target, candidate, "needs_recovery", str(exc))
-                raise
+                    failures.append((target["id"], str(exc)))
+                    self.event(target["id"] + " needs recovery: " + str(exc))
+                    # If Supervisor may still be mutating globally, do not start
+                    # another deployment until its job state is known.
+                    if isinstance(exc, UncertainMutation):
+                        break
+
+            if failures:
+                failed = ", ".join(ident for ident, _ in failures)
+                raise SupervisorError("Some add-ons failed and need recovery: " + failed)
 
     def recover(self, target):
         tx = self.state["transactions"].get(target["id"])
@@ -485,7 +511,7 @@ class Controller:
             self._build(rebuilt_identity)
             if tx["was_started"] or not previous:
                 self.supervisor.post(f"/addons/{slug}/start")
-                self.health(target, slug)
+                self.health(self.recovery_health_target(target), slug)
             self._finish(target, rebuilt_identity, tx)
 
     def rollback(self, target):
