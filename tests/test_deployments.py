@@ -164,17 +164,18 @@ def test_unchanged_commits_do_not_stop_refresh_or_rebuild(deployment):
     assert sup.calls == []
 
 
-def test_all_downloads_and_manifests_are_validated_before_any_stop(deployment):
-    c, sup, t, first, _, _ = deployment
+def test_preflight_failure_does_not_block_valid_addon(deployment):
+    c, sup, t, first, second, _ = deployment
     c.deploy_batch([t], first)
     invalid = dict(t, id="other", path="missing")
     # Use the same object database for a second target, but retain separate ownership.
     import shutil
     shutil.copytree(c.source.root / "demo.git", c.source.root / "other.git")
     sup.calls.clear()
-    with pytest.raises(RuntimeError):
+    with pytest.raises(SupervisorError, match="Some add-ons"):
         c.deploy_batch([t, invalid])
-    assert sup.calls == []
+    assert c.state["current"]["demo"]["sha"] == second
+    assert "other" not in c.state["transactions"]
     assert not c.state["transactions"]
 
 
@@ -358,7 +359,7 @@ def test_startup_filters_entries_but_manual_update_all_does_not(deployment, monk
     assert deployed == ["demo"]
 
 
-def test_batch_reloads_definitions_once_for_multiple_addons(deployment):
+def test_batch_processes_definition_refreshes_per_addon(deployment):
     c, sup, t, _, _, upstream = deployment
     import shutil
     second_app = upstream / "other"
@@ -373,7 +374,7 @@ def test_batch_reloads_definitions_once_for_multiple_addons(deployment):
     shutil.copytree(c.source.root / "demo.git", c.source.root / "other.git")
     other = dict(t, id="other", path="other")
     c.deploy_batch([t, other], sha)
-    assert [p for p, _ in sup.calls].count("/store/reload") == 1
+    assert [p for p, _ in sup.calls].count("/store/reload") == 2
     assert set(sup.apps) == {"local_demo", "local_other"}
 
 
@@ -495,3 +496,54 @@ def test_changes_to_other_addons_in_shared_repository_skip_rebuild(deployment):
     c.deploy_batch([t], sha)
     assert sup.calls == []
     assert c.state["current"]["demo"]["sha"] == second
+
+
+def test_failure_of_one_addon_does_not_block_other_deployment(deployment, monkeypatch):
+    c, sup, t, _, _, upstream = deployment
+    import shutil
+
+    second_app = upstream / "other"
+    shutil.copytree(upstream / "app", second_app)
+    cfg = yaml.safe_load((second_app / "config.yaml").read_text())
+    cfg["slug"] = "other"
+    cfg["name"] = "Other add-on"
+    (second_app / "config.yaml").write_text(yaml.safe_dump(cfg))
+    git(upstream, "add", ".")
+    git(upstream, "commit", "-m", "Independent second add-on")
+    sha = git(upstream, "rev-parse", "HEAD")
+    subprocess.run(
+        ["git", "--git-dir", str(c.source.root / "demo.git"), "-c", "protocol.file.allow=always",
+         "fetch", str(upstream), "main"],
+        check=True, capture_output=True,
+    )
+    shutil.copytree(c.source.root / "demo.git", c.source.root / "other.git")
+    other = dict(t, id="other", path="other")
+
+    def health(target, slug):
+        if target["id"] == "demo":
+            raise SupervisorError("Health failed")
+        sup.wait_state(slug, "started", 1)
+
+    monkeypatch.setattr(c, "health", health)
+    with pytest.raises(SupervisorError, match="Some add-ons failed"):
+        c.deploy_batch([t, other], sha)
+
+    assert "demo" in c.state["transactions"]
+    assert "other" not in c.state["transactions"]
+    assert c.state["current"]["other"]["sha"] == sha
+    assert sup.apps["local_other"]["state"] == "started"
+
+
+def test_recovery_uses_current_health_settings_or_supervisor_only_if_removed(deployment):
+    c, _, t, _, _, _ = deployment
+    stored = dict(t, health_port=8099, health_path="/health")
+
+    c.targets = [dict(t, health_port=0, health_path="/")]
+    current = c.recovery_health_target(stored)
+    assert current["health_port"] == 0
+    assert current["health_path"] == "/"
+
+    c.targets = []
+    removed = c.recovery_health_target(stored)
+    assert removed["health_port"] == 0
+    assert removed["health_path"] == "/"
