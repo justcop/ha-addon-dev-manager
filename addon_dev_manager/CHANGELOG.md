@@ -1,3 +1,8 @@
+## 0.3.3
+- Every deployed Git commit now gets its own Supervisor version ending in `-dev.<sha>`.
+- Removes the code-only version reuse that could advance Git state while leaving Home Assistant on an older container version.
+- Update to latest repairs legacy mismatches where the recorded SHA is current but the installed/container version belongs to an older commit.
+
 ## 0.3.2
 - Supervisor-only health is now the default; repository discovery no longer mistakes ingress ports for health-check ports.
 - Recovery always uses Supervisor state and cannot be trapped by an optional HTTP health probe.
