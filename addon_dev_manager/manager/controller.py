@@ -478,6 +478,42 @@ class Controller:
         slug = tx["candidate"]["slug"]
         self.supervisor.ensure_idle(slug)
         previous = tx["previous"]
+        installed_apps = self.supervisor.installed()
+        if slug in installed_apps:
+            info = self.supervisor.info(slug)
+            known_versions = {tx["candidate"]["version"]}
+            if previous:
+                known_versions.add(previous["version"])
+            superseded = info.get("version") not in known_versions
+            # A restart can leave a completed start journalled, or an old
+            # journal can survive a newer installation. Never blindly restore
+            # old code over an unknown installed version.
+            if superseded or (tx["phase"] == "starting" and info.get("state") == "started"):
+                directory = self.assert_owned(target)
+                marker_path = directory / MARKER
+                if not marker_path.is_file():
+                    raise SupervisorError("Installed version differs from the recovery record and managed source identity is missing. Refusing to restore older code.")
+                identity_on_disk = json.loads(marker_path.read_text())
+                config_path = next((directory / n for n in CONFIG_NAMES
+                                    if (directory / n).is_file() and not (directory / n).is_symlink()), None)
+                config = yaml.safe_load(config_path.read_text()) if config_path else {}
+                matches = (identity_on_disk.get("slug") == slug
+                           and identity_on_disk.get("version") == info.get("version")
+                           and config.get("version") == info.get("version")
+                           and "local_" + str(config.get("slug")) == slug
+                           and isinstance(identity_on_disk.get("sha"), str)
+                           and len(identity_on_disk["sha"]) == 40
+                           and all(c in "0123456789abcdef" for c in identity_on_disk["sha"]))
+                if matches:
+                    self.event("Verifying installed version for " + target["id"] + "; preserving current code")
+                    if info.get("state") != "started":
+                        self.supervisor.post(f"/addons/{slug}/start")
+                    self.health(self.recovery_health_target(target), slug)
+                    self._finish(target, identity_on_disk, tx)
+                    self.event("Reconciled recovery record for " + target["id"])
+                    return
+                if superseded:
+                    raise SupervisorError("Supervisor has a different version from this recovery record, but managed source does not match it. Refusing to downgrade. Preserve the installed version and inspect the managed source identity.")
         # First installation: retry the candidate. Existing deployment: restore
         # the exact prior commit. Neither action fetches GitHub.
         identity = previous or tx["candidate"]

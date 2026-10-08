@@ -575,3 +575,68 @@ def test_latest_sha_with_stale_container_version_is_repaired(deployment):
     paths = [p for p, _ in sup.calls]
     assert "/store/reload" in paths
     assert "/store/addons/local_demo/update" in paths
+
+
+def test_stale_recovery_preserves_newer_installed_version(deployment):
+    c, sup, target, first, second, _ = deployment
+    c.deploy_batch([target], first)
+    old = deepcopy(c.state['current']['demo'])
+    stale = dict(target=target, candidate=old, previous=None, installed=False,
+                 was_started=False, watchdog=False, phase='starting')
+    c.deploy_batch([target], second)
+    newer = deepcopy(c.state['current']['demo'])
+    c.state['current']['demo'] = old
+    c.state['transactions']['demo'] = stale
+    sup.calls.clear()
+    c.recover(target)
+    assert c.state['current']['demo'] == newer
+    assert 'demo' not in c.state['transactions']
+    assert sup.calls == []
+    assert sup.apps['local_demo']['version'] == newer['version']
+
+
+def test_unknown_installed_version_never_downgraded(deployment):
+    c, sup, target, first, _, _ = deployment
+    c.deploy_batch([target], first)
+    old = deepcopy(c.state['current']['demo'])
+    c.state['transactions']['demo'] = dict(target=target, candidate=old, previous=None,
+        installed=True, was_started=True, watchdog=False, phase='starting')
+    sup.apps['local_demo']['version'] = '9.0.0-dev.unknown'
+    sup.calls.clear()
+    with pytest.raises(SupervisorError, match='Refusing to downgrade'):
+        c.recover(target)
+    assert sup.calls == []
+    assert 'demo' in c.state['transactions']
+
+
+def test_completed_start_recovery_does_not_rollback(deployment):
+    c, sup, target, first, second, _ = deployment
+    c.deploy_batch([target], first)
+    old = deepcopy(c.state['current']['demo'])
+    c.deploy_batch([target], second)
+    newer = deepcopy(c.state['current']['demo'])
+    c.state['transactions']['demo'] = dict(target=target, candidate=newer, previous=old,
+        installed=True, was_started=True, watchdog=False, phase='starting')
+    c.state['current']['demo'] = old
+    sup.calls.clear()
+    c.recover(target)
+    assert c.state['current']['demo'] == newer
+    assert sup.calls == []
+
+
+def test_newer_installation_failed_verification_keeps_recovery(deployment, monkeypatch):
+    c, sup, target, first, second, _ = deployment
+    c.deploy_batch([target], first)
+    old = deepcopy(c.state['current']['demo'])
+    c.deploy_batch([target], second)
+    newer = deepcopy(c.state['current']['demo'])
+    c.state['current']['demo'] = old
+    c.state['transactions']['demo'] = dict(target=target, candidate=old, previous=None,
+        installed=True, was_started=True, watchdog=False, phase='starting')
+    monkeypatch.setattr(c, 'health', lambda *args: (_ for _ in ()).throw(SupervisorError('Not healthy')))
+    sup.calls.clear()
+    with pytest.raises(SupervisorError, match='Not healthy'):
+        c.recover(target)
+    assert sup.calls == []
+    assert sup.apps['local_demo']['version'] == newer['version']
+    assert 'demo' in c.state['transactions']

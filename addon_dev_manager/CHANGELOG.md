@@ -1,3 +1,9 @@
+## 0.3.4
+
+- Reconcile interrupted starts with matching installed and managed source versions before attempting rollback.
+- Preserve newer installations when a stale recovery record refers to older code.
+- Refuse recovery downgrades when an unknown installed version cannot be verified against managed source.
+
 ## 0.3.3
 - Every deployed Git commit now gets its own Supervisor version ending in `-dev.<sha>`.
 - Removes the code-only version reuse that could advance Git state while leaving Home Assistant on an older container version.
