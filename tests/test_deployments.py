@@ -400,7 +400,7 @@ def code_commit(c, upstream, source_version="1.0.0"):
 
 
 @pytest.mark.parametrize("source_version", ["1.0.0", "1.0.1"])
-def test_every_changed_commit_gets_unique_supervisor_version(deployment, source_version):
+def test_source_only_rebuild_skips_store_reload_and_retains_commit_history(deployment, source_version):
     c, sup, t, _, second, upstream = deployment
     c.deploy_batch([t], second)
     original_container_version = sup.apps["local_demo"]["version"]
@@ -408,15 +408,59 @@ def test_every_changed_commit_gets_unique_supervisor_version(deployment, source_
     sup.calls.clear()
     c.deploy_batch([t], third)
     paths = [p for p, _ in sup.calls]
-    assert "/store/reload" in paths
-    assert "/store/addons/local_demo/update" in paths
-    assert "/addons/local_demo/rebuild" not in paths
-    assert sup.apps["local_demo"]["version"] == source_version + "-dev." + third[:12]
-    assert sup.apps["local_demo"]["version"] != original_container_version
-    assert c.state["current"]["demo"]["version"] == source_version + "-dev." + third[:12]
+    if source_version == "1.0.0":
+        assert "/store/reload" not in paths
+        assert "/addons/local_demo/rebuild" in paths
+        assert "/store/addons/local_demo/update" not in paths
+        assert sup.apps["local_demo"]["version"] == original_container_version
+        assert c.state["current"]["demo"]["version_mode"] == "source-only"
+    else:
+        assert "/store/reload" in paths
+        assert "/store/addons/local_demo/update" in paths
+        assert "/addons/local_demo/rebuild" not in paths
+        assert sup.apps["local_demo"]["version"] == source_version + "-dev." + third[:12]
     assert c.state["current"]["demo"]["source_version"] == source_version
     assert c.state["current"]["demo"]["sha"] == third
+    assert c.state["history"][0]["sha"] == third
+    assert json.loads((c.addons_dir / "devmgr_demo" / MARKER).read_text())["sha"] == third
     assert "third" in (c.addons_dir / "devmgr_demo/run.sh").read_text()
+    # Polling the already-deployed commit must not repair a deliberately
+    # shared Supervisor version by doing a second, unnecessary full rebuild.
+    sup.calls.clear()
+    c.deploy_batch([t], third)
+    assert sup.calls == []
+
+
+def test_code_only_rollback_restores_git_source_without_store_refresh(deployment):
+    c, sup, t, _, second, upstream = deployment
+    c.deploy_batch([t], second)
+    third = code_commit(c, upstream)
+    c.deploy_batch([t], third)
+    original_version = sup.apps["local_demo"]["version"]
+    sup.calls.clear()
+    c.rollback(t)
+    paths = [p for p, _ in sup.calls]
+    assert "/store/reload" not in paths
+    assert "/addons/local_demo/rebuild" in paths
+    assert c.state["current"]["demo"]["sha"] == second
+    assert sup.apps["local_demo"]["version"] == original_version
+    assert "second" in (c.addons_dir / "devmgr_demo/run.sh").read_text()
+
+
+def test_build_definition_change_still_triggers_store_reload(deployment):
+    c, sup, t, _, second, upstream = deployment
+    c.deploy_batch([t], second)
+    (upstream / "app/build.yaml").write_text("build_from:\n  amd64: alpine:3.22\n")
+    git(upstream, "add", ".")
+    git(upstream, "commit", "-m", "Change Supervisor build definition")
+    sha = git(upstream, "rev-parse", "HEAD")
+    subprocess.run(["git", "--git-dir", str(c.source.root / "demo.git"),
+                    "-c", "protocol.file.allow=always", "fetch", str(upstream), "main"],
+                   check=True, capture_output=True)
+    sup.calls.clear()
+    c.deploy_batch([t], sha)
+    assert "/store/reload" in [p for p, _ in sup.calls]
+
 
 
 def test_code_only_failure_recovers_exact_prior_definition_version(deployment):
