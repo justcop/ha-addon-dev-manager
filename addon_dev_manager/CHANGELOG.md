@@ -1,3 +1,10 @@
+## 0.3.5
+
+- Rebuild source-only Git commits without refreshing the entire Supervisor add-on store.
+- Keep the already-installed Supervisor version during source-only rebuilds; retain exact Git commit versions, history and rollback within Development Manager.
+- Still refresh definitions for changed app configuration, declared source version, build metadata, AppArmor or translations.
+- Preserve fast-path deployment identity through recovery and avoid duplicate rebuilds on subsequent polls.
+
 ## 0.3.4
 
 - Reconcile interrupted starts with matching installed and managed source versions before attempting rollback.
