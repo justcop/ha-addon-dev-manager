@@ -6,9 +6,9 @@ A Home Assistant add-on for deploying GitHub source to local add-ons. Configure 
 
 **Code-only changes skip the repository refresh.** The manager downloads the selected commit, confirms the target is stopped, replaces its local source and asks Supervisor to rebuild its container.
 
-If the Home Assistant definition changes, the manager reloads store metadata once for the batch, then updates the containers. This includes configuration schema/defaults, permissions, ports, build configuration, AppArmor and translations. Supervisor currently exposes only a whole-store reload API, so this path can still wait on other repositories. Docker build and dependency installation time also remains.
+If the Home Assistant definition changes, the manager reloads store metadata before updating that container. This includes configuration schema/defaults, permissions, ports, build configuration, AppArmor and translations. Supervisor currently exposes only a whole-store reload API, so this path can still wait on other repositories. Docker build and dependency installation time also remains.
 
-The interface distinguishes the **source version and commit** from the **container definition version**. Code-only deployments keep the existing definition version to avoid a store reload. A changed definition gets a version such as `1.2.3-dev.abcdef123456`. Git history records the exact source actually deployed in either case. For repositories containing several add-ons, changes outside the selected subdirectory are skipped as well.
+The interface distinguishes the **source version and commit** from the **container definition version**. Code-only deployments keep the existing Supervisor version to avoid a store reload, but always perform a full local Docker rebuild. The displayed Home Assistant version may therefore retain the earlier commit suffix; Development Manager's deployed SHA, version picker, and history identify the exact running source. A changed definition gets a version such as `1.2.3-dev.abcdef123456`. Git history records the exact source actually deployed in either case. For repositories containing several add-ons, changes outside the selected subdirectory are skipped as well.
 
 Automatic updates are enabled by default. The controller checks enabled entries every 60 seconds and deploys changed source, even when the source version number has not changed. Configure **Automatic updates** and **Check interval** in Home Assistant or **Repositories & settings**. Turning automatic updates off also disables startup deployments; manual updates still work. Settings saved in the web UI take effect immediately; changes in Home Assistant Configuration require restarting the manager.
 
@@ -22,7 +22,7 @@ The interval bounds the wait until the next check only while the controller is i
 4. Open **Repositories & settings** and add each target. Settings are saved through Supervisor into the manager's own Home Assistant configuration.
 5. Select **Install latest** for the first local deployment.
 
-This first release is experimental. Automated tests cover the deployment contract and security boundaries, but it has not yet been installed on a real Home Assistant host.
+This app remains experimental. Automated tests model Supervisor deployment and recovery, and its behaviour on a live Home Assistant host should be validated before relying on the faster source-only path.
 
 ### Example configuration
 
