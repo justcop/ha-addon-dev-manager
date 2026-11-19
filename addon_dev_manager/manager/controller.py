@@ -302,14 +302,58 @@ class Controller:
             raise SupervisorError("Existing add-on settings are incompatible with the selected version. Check Home Assistant configuration before recovery.")
 
     def _prepare_definition(self, target, staging, candidate, current):
-        """Every deployed commit has a distinct Supervisor version.
+        """Reload Supervisor only when its add-on definition changes.
 
-        Earlier releases reused the prior container version for code-only changes.
-        That allowed Git state to advance while Home Assistant still reported the
-        old installed version. A new commit must therefore refresh the local
-        definition so Supervisor can install its unique -dev.<sha> version.
+        A source-only rebuild intentionally retains the installed Supervisor
+        version; the exact Git SHA is held separately in the manager's durable
+        history and ownership marker. This avoids a global store refresh for
+        application code, templates, CSS and other ordinary source changes.
         """
-        return True
+        if current is None:
+            return True
+        deployed = self.assert_owned(target, current)
+        old_config = next((deployed / name for name in CONFIG_NAMES
+                           if (deployed / name).is_file()), None)
+        new_config = next((staging / name for name in CONFIG_NAMES
+                           if (staging / name).is_file()), None)
+        if old_config is None or old_config.name != new_config.name:
+            return True
+        old_definition = yaml.safe_load(old_config.read_text())
+        new_definition = yaml.safe_load(new_config.read_text())
+        old_definition.pop("version", None)
+        new_definition.pop("version", None)
+        if (old_definition != new_definition
+                or current.get("source_version") != candidate["source_version"]):
+            return True
+
+        # These files are used by Supervisor to discover/build an add-on.
+        # In contrast, Dockerfile and application source changes only need a
+        # container rebuild (not a global refresh of all repositories).
+        for filename in ("build.yaml", "build.yml", "build.json",
+                         "apparmor.txt", "apparmor.json"):
+            old_file, new_file = deployed / filename, staging / filename
+            if old_file.exists() != new_file.exists():
+                return True
+            if old_file.is_file() and old_file.read_bytes() != new_file.read_bytes():
+                return True
+        for dirname in ("translations",):
+            old_dir, new_dir = deployed / dirname, staging / dirname
+            def contents(root):
+                return {str(path.relative_to(root)): path.read_bytes()
+                        for path in root.rglob("*") if path.is_file()} if root.is_dir() else {}
+            if contents(old_dir) != contents(new_dir):
+                return True
+
+        # The already-discovered definition stays at its installed version.
+        # Rebuild uses newly published source; Manager tracks the exact SHA.
+        candidate["version"] = current["version"]
+        candidate["version_mode"] = "source-only"
+        definition = yaml.safe_load(new_config.read_text())
+        definition["version"] = current["version"]
+        new_config.write_text(json.dumps(definition, indent=2) if new_config.suffix == ".json"
+                              else yaml.safe_dump(definition, sort_keys=False))
+        (staging / MARKER).write_text(json.dumps(candidate))
+        return False
 
     def health(self, target, slug):
         """Require Supervisor started; optionally add an explicit HTTP readiness probe."""
@@ -379,7 +423,9 @@ class Controller:
                     current = self.state["current"].get(target["id"])
                     if current and current["slug"] in installed and installed[current["slug"]].get("version") == current["version"]:
                         expected_version = str(current.get("source_version", "")) + "-dev." + sha[:12]
-                        if current["sha"] == sha and current["version"] == expected_version:
+                        if (current["sha"] == sha
+                                and (current["version"] == expected_version
+                                     or current.get("version_mode") == "source-only")):
                             self.event(target["id"] + " is already at " + sha[:12])
                             continue
                         if current["sha"] == sha and current["version"] != expected_version:
@@ -531,6 +577,8 @@ class Controller:
             # A prior code-only deployment may deliberately share the version
             # of its last definition update. Restore that exact container version.
             rebuilt_identity["version"] = identity["version"]
+            if identity.get("version_mode") == "source-only":
+                rebuilt_identity["version_mode"] = "source-only"
             config_path = next(staging / n for n in CONFIG_NAMES if (staging / n).is_file())
             config = yaml.safe_load(config_path.read_text())
             config["version"] = identity["version"]
