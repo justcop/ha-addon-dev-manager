@@ -311,6 +311,13 @@ class Controller:
         """
         if current is None:
             return True
+        # Repair legacy records from the earlier optimiser which changed
+        # the recorded SHA but never confirmed a corresponding rebuild.
+        expected = candidate["source_version"] + "-dev." + candidate["sha"][:12]
+        if (current["sha"] == candidate["sha"]
+                and current["version"] != expected
+                and current.get("version_mode") != "source-only"):
+            return True
         deployed = self.assert_owned(target, current)
         old_config = next((deployed / name for name in CONFIG_NAMES
                            if (deployed / name).is_file()), None)
