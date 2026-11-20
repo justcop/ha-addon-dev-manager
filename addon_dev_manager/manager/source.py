@@ -127,6 +127,19 @@ class GitSource:
             versions.append(dict(sha=sha, date=date, subject=subject))
         return versions
 
+    def changed_files(self, target, previous_sha, next_sha):
+        """Return paths changed inside this add-on; no external Git checkout."""
+        if not SHA.fullmatch(previous_sha) or not SHA.fullmatch(next_sha):
+            raise ValueError("Invalid commit")
+        directory = source_path(target["path"])
+        names = self.run(target, "diff", "--name-only", "--no-renames", "-z",
+                         previous_sha, next_sha, "--", directory, binary=True)
+        prefix = "" if directory == "." else directory.rstrip("/") + "/"
+        paths = [name.decode("utf-8") for name in names.split(b"\\0") if name]
+        if any(not name.startswith(prefix) for name in paths):
+            raise ValueError("Git returned a file outside the configured add-on")
+        return [name[len(prefix):] for name in paths]
+
     def tree_hash(self, target, sha):
         if not SHA.fullmatch(sha):
             raise ValueError("Invalid commit")
