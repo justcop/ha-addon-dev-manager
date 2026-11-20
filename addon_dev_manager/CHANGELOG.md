@@ -1,3 +1,10 @@
+## 0.3.6
+
+- Deploy changes confined to CSS, JavaScript, images and fonts in a supported app without stopping or rebuilding its container.
+- Require the verified LiveAssets contract and read-only local_apps mapping; reject non-static source changes and Android assetlinks verification.
+- Journal each live update, retain a static-file recovery checkpoint and preserve commit-based history and rollback.
+- Continue rebuilding locally for Python code, dependencies and other non-static changes.
+
 ## 0.3.5
 
 - Rebuild source-only Git commits without refreshing the entire Supervisor add-on store.
