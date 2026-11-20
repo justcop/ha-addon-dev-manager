@@ -27,7 +27,8 @@ def enable_live_assets(deployment):
     config = yaml.safe_load((app / "config.yaml").read_text())
     config["map"] = [{"type": "local_apps", "read_only": True}]
     (app / "config.yaml").write_text(yaml.safe_dump(config))
-    (app / "app").mkdir()\n    (app / "app" / "live_assets.py").write_text("# opt-in to serving live static assets\n")
+    (app / "app").mkdir()
+    (app / "app" / "live_assets.py").write_text("# opt-in to serving live static assets\n")
     static = app / "app" / "static"
     static.mkdir()
     (static / "style.css").write_text("body{color:red}")
