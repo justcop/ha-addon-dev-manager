@@ -4,7 +4,9 @@ A Home Assistant add-on for deploying GitHub source to local add-ons. Configure 
 
 ## What makes updates faster
 
-**Code-only changes skip the repository refresh.** The manager downloads the selected commit, confirms the target is stopped, replaces its local source and asks Supervisor to rebuild its container.
+**Frontend-only changes can skip Docker entirely** for apps with the explicit read-only local source mount and LiveAssets contract (currently AudioShelf). A Git diff allows only files inside `app/static/` with known CSS/JS/image/font extensions; Android assetlinks verification files are excluded. The manager copies the new static files into its owned source directory while the running app serves them via a read-only mount. It preserves the Git commit, rollback and an interrupted-update recovery checkpoint.
+
+For other source-only changes the manager downloads the selected commit, stops the target, replaces its local source and asks Supervisor to rebuild its container, still skipping the repository refresh.
 
 If the Home Assistant definition changes, the manager reloads store metadata before updating that container. This includes configuration schema/defaults, permissions, ports, build configuration, AppArmor and translations. Supervisor currently exposes only a whole-store reload API, so this path can still wait on other repositories. Docker build and dependency installation time also remains.
 
