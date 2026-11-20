@@ -27,8 +27,8 @@ def enable_live_assets(deployment):
     config = yaml.safe_load((app / "config.yaml").read_text())
     config["map"] = [{"type": "local_apps", "read_only": True}]
     (app / "config.yaml").write_text(yaml.safe_dump(config))
-    (app / "live_assets.py").write_text("# opt-in to serving live static assets\n")
-    static = app / "static"
+    (app / "app").mkdir()\n    (app / "app" / "live_assets.py").write_text("# opt-in to serving live static assets\n")
+    static = app / "app" / "static"
     static.mkdir()
     (static / "style.css").write_text("body{color:red}")
     base_sha = new_commit(controller, target, upstream, "Enable read-only live assets")
@@ -38,7 +38,7 @@ def enable_live_assets(deployment):
 
 def test_static_css_deploys_live_without_stopping_or_rebuilding(deployment):
     c, sup, target, upstream, base = enable_live_assets(deployment)
-    (upstream / "app/static/style.css").write_text("body{color:blue}")
+    (upstream / "app/app/static/style.css").write_text("body{color:blue}")
     next_sha = new_commit(c, target, upstream, "Change CSS only")
     sup.calls.clear()
     c.deploy_batch([target], next_sha)
@@ -69,7 +69,7 @@ def test_static_css_deploys_live_without_stopping_or_rebuilding(deployment):
     assert sup.apps["local_demo"]["state"] == "started"
 
 
-@pytest.mark.parametrize("filename", ["run.sh", "static/assetlinks.json"])
+@pytest.mark.parametrize("filename", ["run.sh", "app/static/assetlinks.json"])
 def test_non_hot_change_requires_full_supervisor_build(deployment, filename):
     c, sup, target, upstream, _base = enable_live_assets(deployment)
     path = upstream / "app" / filename
@@ -85,7 +85,7 @@ def test_non_hot_change_requires_full_supervisor_build(deployment, filename):
 
 def test_hot_update_failure_restores_static_checkpoint(deployment, monkeypatch):
     c, sup, target, upstream, base = enable_live_assets(deployment)
-    (upstream / "app/static/style.css").write_text("body{color:green}")
+    (upstream / "app/app/static/style.css").write_text("body{color:green}")
     sha = new_commit(c, target, upstream, "Update style")
     original_health = c.health
 
@@ -126,7 +126,7 @@ def test_live_static_guard_rejects_untrusted_marker_or_rw_mount(deployment):
 
 def test_static_diff_rejects_backend_or_untrusted_app_link_changes(deployment):
     c, _sup, target, upstream, _base = enable_live_assets(deployment)
-    (upstream / "app/static/style.css").write_text("body{color:purple}")
+    (upstream / "app/app/static/style.css").write_text("body{color:purple}")
     next_sha = new_commit(c, target, upstream, "Change CSS")
     assert c.source.changed_files(target, _base, next_sha) == ["app/static/style.css"]
     assert live_static.allowed_paths(c.source.changed_files(target, _base, next_sha))
