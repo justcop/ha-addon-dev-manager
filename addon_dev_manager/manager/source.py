@@ -135,7 +135,7 @@ class GitSource:
         names = self.run(target, "diff", "--name-only", "--no-renames", "-z",
                          previous_sha, next_sha, "--", directory, binary=True)
         prefix = "" if directory == "." else directory.rstrip("/") + "/"
-        paths = [name.decode("utf-8") for name in names.split(b"\\0") if name]
+        paths = [name.decode("utf-8") for name in names.split(b"\0") if name]
         if any(not name.startswith(prefix) for name in paths):
             raise ValueError("Git returned a file outside the configured add-on")
         return [name[len(prefix):] for name in paths]
