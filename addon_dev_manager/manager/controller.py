@@ -17,6 +17,7 @@ import ipaddress
 import yaml
 
 from .source import GitSource, MARKER, CONFIG_NAMES, targets_from_options
+from . import live_static
 from .supervisor import SupervisorError, UncertainMutation
 
 LOG = logging.getLogger(__name__)
@@ -432,7 +433,7 @@ class Controller:
                         expected_version = str(current.get("source_version", "")) + "-dev." + sha[:12]
                         if (current["sha"] == sha
                                 and (current["version"] == expected_version
-                                     or current.get("version_mode") == "source-only")):
+                                     or current.get("version_mode") in ("source-only", "live-static"))):
                             self.event(target["id"] + " is already at " + sha[:12])
                             continue
                         if current["sha"] == sha and current["version"] != expected_version:
@@ -461,13 +462,25 @@ class Controller:
                     needs_reload = self._prepare_definition(target, staging, candidate, current)
                     needs_reload = (needs_reload or slug not in installed
                                     or installed[slug].get("version") != candidate["version"])
-                    prepared.append((target, staging, candidate, needs_reload))
+                    hot_static = False
+                    if (current and not needs_reload
+                            and current["slug"] in installed
+                            and installed[current["slug"]].get("state") == "started"
+                            and installed[current["slug"]].get("version") == current["version"]
+                            and candidate["source_version"] == current["source_version"]
+                            and live_static.live_capable(self.addons_dir / ("devmgr_" + target["id"]), current)):
+                        changed = self.source.changed_files(target, current["sha"], sha)
+                        hot_static = live_static.allowed_paths(changed)
+                        if hot_static:
+                            candidate["version_mode"] = "live-static"
+                            candidate["container_sha"] = current.get("container_sha", current["sha"])
+                    prepared.append((target, staging, candidate, needs_reload, hot_static))
                 except Exception as exc:
                     failures.append((target["id"], exc))
                     self.event("Skipping " + target["id"] + ": " + str(exc))
 
             slug_ids = {}
-            for target, _staging, candidate, _needs_reload in prepared:
+            for target, _staging, candidate, _needs_reload, _hot_static in prepared:
                 slug_ids.setdefault(candidate["slug"], []).append(target["id"])
             duplicates = [ids for ids in slug_ids.values() if len(ids) > 1]
             if duplicates:
@@ -484,10 +497,28 @@ class Controller:
 
             # Mutate each add-on as its own transaction. A known failure leaves
             # only that add-on in recovery and the batch continues.
-            for target, staging, candidate, needs_reload in prepared:
+            for target, staging, candidate, needs_reload, hot_static in prepared:
                 tx = None
                 try:
                     tx = self._journal(target, candidate, candidate["slug"] in installed)
+                    if hot_static:
+                        with self.lock:
+                            tx["hot_static"] = True
+                            self.save()
+                        folder = self.addons_dir / ("devmgr_" + target["id"])
+                        self.phase(target, "hot-publishing")
+                        self.event("Updating live frontend " + target["id"] + " at " + candidate["sha"][:12]
+                                   + " (no restart or rebuild)")
+                        live_static.publish(folder, staging, candidate)
+                        self.phase(target, "starting")
+                        self.health(target, candidate["slug"])
+                        self._finish(target, candidate, tx)
+                        try:
+                            live_static.finish(folder)
+                        except OSError:
+                            LOG.exception("Could not clear old static files for %s", target["id"])
+                        self.event("Live frontend deployed " + target["id"])
+                        continue
                     self._stop(target, tx)
                     self.phase(target, "publishing")
                     self._publish(target, staging)
@@ -531,6 +562,26 @@ class Controller:
         slug = tx["candidate"]["slug"]
         self.supervisor.ensure_idle(slug)
         previous = tx["previous"]
+        if tx.get("hot_static"):
+            folder = self.assert_owned(target)
+            marker = json.loads((folder / MARKER).read_text())
+            backup = folder / "app" / live_static.PREVIOUS
+            if (marker.get("sha") == tx["candidate"]["sha"]
+                    and self.supervisor.info(slug).get("state") == "started"):
+                self.health(self.recovery_health_target(target), slug)
+                self._finish(target, tx["candidate"], tx)
+                live_static.finish(folder)
+                self.event("Reconciled completed live frontend update " + target["id"])
+                return
+            if previous and backup.is_dir():
+                live_static.restore(folder, previous)
+            elif not previous or marker.get("sha") != previous["sha"]:
+                raise ValueError("Live frontend checkpoint is missing. Inspect before recovery.")
+            with self.lock:
+                self.state["transactions"].pop(target["id"], None)
+                self.save()
+            self.event("Restored previous live frontend " + target["id"] + " without a container restart")
+            return
         installed_apps = self.supervisor.installed()
         if slug in installed_apps:
             info = self.supervisor.info(slug)
