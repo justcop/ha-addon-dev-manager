@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from manager import live_static
-from test_deployments import git
+from test_deployments import git, deployment
 
 
 def new_commit(controller, target, upstream, message):
